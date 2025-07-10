@@ -1,5 +1,9 @@
 from flask import Flask, request, jsonify
 import requests, os
+import logging
+
+# تهيئة الـ logging للتشخيص
+logging.basicConfig(level=logging.DEBUG)
 
 # استيراد كل الخدمات
 from services import (
@@ -59,7 +63,6 @@ services_map = {
 # تحيات والقائمة
 greetings = ["سلام", "السلام", "السلام عليكم", "السلام عليكم ورحمة الله"]
 menu_triggers = ["0", "٠", "صفر", ".", "القائمة", "خدمات", "نقطة", "نقطه"]
-
 menu_message = """
 *_أهلا بك في دليل خدمات القرين يمكنك الإستعلام عن الخدمات التالية:_*
 
@@ -93,14 +96,14 @@ ARABIC2LATIN = str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.get_json(force=True)
+    data   = request.get_json(force=True)
     sender = data.get("data", {}).get("from")
     msg    = data.get("data", {}).get("body", "")
 
     if not sender or not msg:
         return jsonify({"success": False}), 200
 
-    # تطبيع النص
+    # تطبيع النص وتحويل الأرقام
     normalized = (
         msg.strip()
            .replace("ـ", "")
@@ -111,31 +114,41 @@ def webhook():
            .lower()
     )
 
-    # ➊ أرقام الخدمات أولاً
-    if normalized in services_map:
-        reply = services_map[normalized](msg)
+    # طباعة للتشخيص
+    logging.debug(f"[DEBUG] raw msg: '{msg}' → normalized: '{normalized}'")
 
-    # ➋ تحيّة
+    # محاولة إيجاد معالج الخدمة
+    handler = None
+    if normalized in services_map:
+        handler = services_map[normalized]
+    else:
+        # جرّب أول “توكن” بعد إزالة علامات ترقيم
+        token = normalized.split()[0].rstrip(".,!?")
+        if token in services_map:
+            handler = services_map[token]
+
+    # بناء الرد
+    if handler:
+        reply = handler(msg)
     elif normalized in greetings:
         reply = "وعليكم السلام ورحمة الله وبركاته 👋"
-
-    # ➌ قائمة رئيسية
     elif normalized in menu_triggers:
         reply = menu_message
-
-    # ➍ غير مفهوم
     else:
         reply = "🤖 عذراً، لم أفهم طلبك. أرسل 0 لعرض القائمة الرئيسية."
 
     # إرسال الرد عبر UltraMsg
-    requests.post(API_URL, data={
-        "token": TOKEN,
-        "to": sender,
-        "body": reply
-    })
+    requests.post(
+        API_URL,
+        data={
+            "token": TOKEN,
+            "to": sender,
+            "body": reply
+        },
+        timeout=10
+    )
 
     return jsonify({"success": True}), 200
-
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
