@@ -1,99 +1,102 @@
-import logging
 from flask import Flask, request, jsonify
-import sqlite3
 import requests
-import os
-from datetime import datetime, time
 
 app = Flask(__name__)
-DB_NAME = os.path.join(os.getcwd(), "services.db")
 
-# إعداد التسجيل
-logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
+# بيانات UltraMsg
+INSTANCE_ID = "instance131412"
+TOKEN = "whjwn3rfyo6r9n48"
+API_URL = f"https://api.ultramsg.com/{INSTANCE_ID}/messages/chat"
 
-ULTRAMSG_INSTANCE_ID = os.environ.get("ULTRAMSG_INSTANCE_ID", "instance130542")
-ULTRAMSG_TOKEN = os.environ.get("ULTRAMSG_TOKEN", "pr2bhaor2vevcrts")
+# ذاكرة لتتبع المحاولات
+unknown_count = {}
 
-# ========== قاعدة البيانات ==========
-def get_all_pharmacies():
-    try:
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        c.execute("SELECT name, description FROM categories")
-        rows = c.fetchall()
-        conn.close()
+# قائمة التحيات المقبولة (مع بعض الأخطاء الشائعة)
+greetings = [
+    "سلام", "سلام عليكم", "السلام", "سلام عليكم ورحمة الله", "سلام عليكم ورحمة الله وبركاته",
+    "سلااام", "السلاام", "سلاآم", "سسلام", "السلامم", "السسلآم"
+]
 
-        if not rows:
-            return "❌ لا توجد بيانات حالياً."
+# كلمات القائمة
+menu_triggers = ["٠", ".", "0", "صفر", "نقطة", "نقطه", "خدمات", "القائمة", "خدمات القرين", "الخدمات"]
 
-        response = "📋 قائمة الصيدليات:\n\n"
-        for row in rows:
-            response += f"🏥 {row[0]}\n{row[1]}\n\n"
-        return response.strip()
-    except Exception as e:
-        logging.error(f"خطأ أثناء جلب الصيدليات: {e}")
-        return "حدث خطأ أثناء جلب البيانات."
+# الرد على القائمة
+menu_message = """
+*_أهلا بك في دليل خدمات القرين يمكنك الإستعلام عن الخدمات التالية:_*
 
-def get_open_pharmacies():
-    now = datetime.now().time()
-    try:
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        c.execute("SELECT name, description, morning_start_time, morning_end_time, evening_start_time, evening_end_time FROM categories")
-        rows = c.fetchall()
-        conn.close()
+1️⃣ حكومي🏢  
+2️⃣ صيدلية💊  
+3️⃣ بقالة🥤  
+4️⃣ خضار🥬  
+5️⃣ رحلات⛺️  
+6️⃣ حلا🍮  
+7️⃣ أسر منتجة🥧  
+8️⃣ مطاعم🍔  
+9️⃣ قرطاسية📗  
+🔟 محلات 🏪
+----
+11-  شالية 
+12- وايت 
+13- شيول
+14-دفان
+15- مواد بناء وعوازل
+16- عمال
+17- محلات 
+18- ذبائح وملاحم
+19- نقل مدرسي ومشاوير 
 
-        open_now = []
-        for row in rows:
-            name, desc, m_start, m_end, e_start, e_end = row
-            if (m_start and m_end and time.fromisoformat(m_start) <= now <= time.fromisoformat(m_end)) or \
-               (e_start and e_end and time.fromisoformat(e_start) <= now <= time.fromisoformat(e_end)):
-                open_now.append(f"🏥 {name}\n{desc}")
+📝 *أرسل رقم أو اسم الخدمة مباشرة لعرض التفاصيل.*
+"""
 
-        if not open_now:
-            return "❌ لا توجد صيدليات مفتوحة الآن."
-
-        return "🚪 الصيدليات المفتوحة الآن:\n\n" + "\n\n".join(open_now)
-    except Exception as e:
-        logging.error(f"خطأ أثناء جلب الصيدليات المفتوحة: {e}")
-        return "حدث خطأ أثناء جلب البيانات."
-
-# ========== إرسال الرد ==========
-def send_whatsapp_message(to, message):
-    try:
-        url = f"https://api.ultramsg.com/{ULTRAMSG_INSTANCE_ID}/messages/chat"
-        payload = {"to": to, "body": message}
-        headers = {"Content-Type": "application/json"}
-        response = requests.post(url, json=payload, headers=headers, params={"token": ULTRAMSG_TOKEN})
-        logging.info(f"تم إرسال الرد: {response.text}")
-    except Exception as e:
-        logging.error(f"خطأ أثناء إرسال الرسالة: {e}")
-
-# ========== Webhook للـ Whapi ==========
-@app.route("/webhook/messages/post", methods=["POST"])
+@app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.json
-    logging.debug(f"تم الاستلام: {data}")
+    data = request.get_json()
+    sender = data.get("body", {}).get("from")
+    message = data.get("body", {}).get("text", "").strip().lower()
 
-    message_obj = data.get("message", {})
-    message_text = message_obj.get("text", "").strip()
-    sender = data.get("from")
+    if not sender or not message:
+        return jsonify({"success": False, "error": "No message found"})
 
-    if not message_text or not sender:
-        return jsonify({"status": "ignored", "reason": "missing message or sender"})
+    response_text = ""
+    normalized_msg = message.replace("ـ", "").replace("أ", "ا").replace("آ", "ا").replace("إ", "ا")
 
-    message_lower = message_text.lower()
+    if any(greet in normalized_msg for greet in greetings):
+        response_text = "وعليكم السلام ورحمة الله وبركاته 👋"
 
-    if message_lower in ["جميع الصيدليات", "كل الصيدليات"]:
-        reply = get_all_pharmacies()
-    elif message_lower in ["الصيدليات المفتوحة", "صيدليات مفتوحة", "الآن مفتوحة"]:
-        reply = get_open_pharmacies()
+    elif any(trigger in normalized_msg for trigger in menu_triggers):
+        response_text = menu_message
+
     else:
-        reply = "👋 مرحبًا! أرسل:\n- 'جميع الصيدليات'\n- 'الصيدليات المفتوحة'"
+        # سجل عدد المرات غير المفهومة لهذا المستخدم
+        count = unknown_count.get(sender, 0) + 1
+        unknown_count[sender] = count
 
-    send_whatsapp_message(sender, reply)
-    return jsonify({"status": "success"})
+        if count < 3:
+            response_text = "🤖 عذراً، لم أفهم طلبك. أرسل صفر (0) لعرض القائمة الرئيسية"
+        else:
+            response_text = "🤖 عذراً، لم أفهم طلبك تم تحويل رسالتك وسيتم الرد عليك في أقرب وقت"
+            forward_message_to_admin(sender, message)
 
-# ========== التشغيل المحلي ==========
+    send_whatsapp_message(sender, response_text)
+    return jsonify({"success": True})
+
+
+def send_whatsapp_message(to, message):
+    data = {
+        "token": TOKEN,
+        "to": to,
+        "body": message,
+        "priority": 10,
+        "referenceId": ""
+    }
+    requests.post(API_URL, data=data)
+
+
+def forward_message_to_admin(sender, original_message):
+    admin_number = "966503813344"
+    forward_text = f"📨 رسالة غير مفهومة من {sender}:\n\n{original_message}"
+    send_whatsapp_message(admin_number, forward_text)
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
