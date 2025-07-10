@@ -11,23 +11,19 @@ DB_NAME = os.path.join(os.getcwd(), "services.db")
 # إعداد التسجيل
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# بيانات Whapi
-WHAPI_API_URL = "https://gate.whapi.cloud"
 WHAPI_TOKEN = "vlMGBHJpxhwRfTZzeNWXRP8CCa1Rteq4"
+WHAPI_URL = "https://gate.whapi.cloud"
 
-# دالة إرسال رسالة عبر Whapi
+# دالة الإرسال عبر Whapi
 def send_whatsapp_message(phone, message):
-    url = f"{WHAPI_API_URL}/v1/messages"
+    url = f"{WHAPI_URL}/messages/text"
     headers = {
         "Authorization": f"Bearer {WHAPI_TOKEN}",
         "Content-Type": "application/json"
     }
     payload = {
         "to": phone,
-        "type": "text",
-        "text": {
-            "body": message
-        }
+        "body": message
     }
     try:
         response = requests.post(url, headers=headers, json=payload)
@@ -37,20 +33,18 @@ def send_whatsapp_message(phone, message):
         logging.error(f"خطأ أثناء إرسال الرسالة: {e}")
         return None
 
-# نقطة الاستقبال من Whapi
+# نقطة الاستقبال من Webhook
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.json
-    logging.debug(f"تم الاستلام: {data}")
+    message = data.get("message", {}).get("body", "").strip()
+    sender = data.get("from", "").split("@")[0]  # يأخذ الرقم فقط
 
-    message_obj = data.get("message", {})
-    message_text = message_obj.get("text", "").strip()
-    sender = data.get("from")
-
-    if not message_text or not sender:
+    if not message or not sender:
         return jsonify({"status": "ignored", "reason": "missing message or sender"})
 
-    message_lower = message_text.lower()
+    # الردود حسب الرسالة
+    message_lower = message.lower()
 
     if message_lower in ["جميع الصيدليات", "كل الصيدليات"]:
         reply = get_all_pharmacies()
@@ -61,10 +55,6 @@ def webhook():
 
     send_whatsapp_message(sender, reply)
     return jsonify({"status": "success"})
-
-@app.route("/", methods=["GET"])
-def home():
-    return "✅ Whapi bot is running!"
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
