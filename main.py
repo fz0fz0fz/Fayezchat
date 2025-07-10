@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 import requests, os
 
-# استيراد جميع الخدمات
+# استيراد كل الخدمات
 from services import (
     governmental,
     pharmacies,
@@ -57,10 +57,7 @@ services_map = {
 }
 
 # تحيات والقائمة
-greetings = [
-    "سلام", "السلام", "السلام عليكم", "السلام عليكم ورحمة الله"
-]
-
+greetings = ["سلام", "السلام", "السلام عليكم", "السلام عليكم ورحمة الله"]
 menu_triggers = ["0", "٠", "صفر", ".", "القائمة", "خدمات", "نقطة", "نقطه"]
 
 menu_message = """
@@ -91,28 +88,42 @@ menu_message = """
 📝 *أرسل رقم أو اسم الخدمة مباشرة لعرض التفاصيل.*
 """
 
+# تحويل الأرقام العربية إلى لاتينية
+ARABIC2LATIN = str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json(force=True)
     sender = data.get("data", {}).get("from")
-    msg = data.get("data", {}).get("body", "").strip()
+    msg    = data.get("data", {}).get("body", "")
 
     if not sender or not msg:
         return jsonify({"success": False}), 200
 
     # تطبيع النص
-    normalized = msg.strip().replace("ـ", "").replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").lower()
+    normalized = (
+        msg.strip()
+           .replace("ـ", "")
+           .replace("أ", "ا")
+           .replace("إ", "ا")
+           .replace("آ", "ا")
+           .translate(ARABIC2LATIN)
+           .lower()
+    )
 
-    # الردود (مع إعطاء أولوية للأرقام)
+    # ➊ أرقام الخدمات أولاً
     if normalized in services_map:
         reply = services_map[normalized](msg)
 
+    # ➋ تحيّة
     elif normalized in greetings:
         reply = "وعليكم السلام ورحمة الله وبركاته 👋"
 
+    # ➌ قائمة رئيسية
     elif normalized in menu_triggers:
         reply = menu_message
 
+    # ➍ غير مفهوم
     else:
         reply = "🤖 عذراً، لم أفهم طلبك. أرسل 0 لعرض القائمة الرئيسية."
 
