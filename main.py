@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 import requests, os
 
-# استيراد الخدمات
+# استيراد جميع الخدمات
 from services import (
     governmental,
     pharmacies,
@@ -20,7 +20,7 @@ from services import (
     building_materials,
     workers,
     stores,
-    meat,
+    butchers,
     school_transport,
     alarm
 )
@@ -32,7 +32,7 @@ INSTANCE_ID = "instance130542"
 TOKEN       = "pr2bhaor2vevcrts"
 API_URL     = f"https://api.ultramsg.com/{INSTANCE_ID}/messages/chat"
 
-# خريطة الأرقام ↦ الخدمات
+# خريطة الأرقام للخدمات
 services_map = {
     "1": governmental.handle,
     "2": pharmacies.handle,
@@ -51,23 +51,18 @@ services_map = {
     "15": building_materials.handle,
     "16": workers.handle,
     "17": stores.handle,
-    "18": meat.handle,
+    "18": butchers.handle,
     "19": school_transport.handle,
     "20": alarm.handle,
 }
 
-# تحويل الأرقام العربية إلى لاتينية
-ARABIC2LATIN = str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")
-
-# عبارات ترحيب
+# تحيات والقائمة
 greetings = [
     "سلام", "السلام", "السلام عليكم", "السلام عليكم ورحمة الله"
 ]
 
-# محفزات عرض القائمة
-menu_triggers = ["0", "٠", "صفر", ".", "نقطة", "نقطه", "القائمة", "خدمات"]
+menu_triggers = ["0", "٠", "صفر", ".", "القائمة", "خدمات", "نقطة", "نقطه"]
 
-# رسالة القائمة
 menu_message = """
 *_أهلا بك في دليل خدمات القرين يمكنك الإستعلام عن الخدمات التالية:_*
 
@@ -106,27 +101,21 @@ def webhook():
         return jsonify({"success": False}), 200
 
     # تطبيع النص
-    normalized = msg.strip()
-    normalized = (normalized.replace("ـ", "")
-                             .replace("أ", "ا")
-                             .replace("إ", "ا")
-                             .replace("آ", "ا")
-                             .translate(ARABIC2LATIN)
-                             .lower())
+    normalized = msg.strip().replace("ـ", "").replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").lower()
+    first_word = normalized.split()[0] if normalized.split() else ""
 
-    print(f"[LOG] Normalized message: {normalized}")  # ✅ للمراقبة
-
-    # الردود حسب الأولوية
-    first_word = normalized.split()[0]  # نأخذ أول كلمة فقط
-
+    # الردود
     if first_word in services_map:
         reply = services_map[first_word](msg)
+
+    elif normalized in menu_triggers:
+        reply = menu_message
 
     elif normalized in greetings:
         reply = "وعليكم السلام ورحمة الله وبركاته 👋"
 
-    elif normalized in menu_triggers:
-        reply = menu_message
+    elif normalized in services_map:
+        reply = services_map[normalized](msg)
 
     else:
         reply = "🤖 عذراً، لم أفهم طلبك. أرسل 0 لعرض القائمة الرئيسية."
