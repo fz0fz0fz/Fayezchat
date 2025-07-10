@@ -3,85 +3,77 @@ from flask import Flask, request, jsonify
 import sqlite3
 import requests
 import os
-from datetime import datetime
+from datetime import datetime, time
 
 app = Flask(__name__)
 DB_NAME = os.path.join(os.getcwd(), "services.db")
 
-# إعداد تسجيل السجلات
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+# إعداد التسجيل
+logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
 
-# بيانات Whapi (ضع القيم الحقيقية هنا أو في env)
-WHAPI_TOKEN = os.getenv("WHAPI_TOKEN", "توكن_whapi")
-WHAPI_INSTANCE_ID = os.getenv("WHAPI_INSTANCE_ID", "معرّف_whapi")
+ULTRAMSG_INSTANCE_ID = os.environ.get("ULTRAMSG_INSTANCE_ID", "instance130542")
+ULTRAMSG_TOKEN = os.environ.get("ULTRAMSG_TOKEN", "pr2bhaor2vevcrts")
 
-# إرسال رسالة واتساب
-def send_whatsapp_message(phone, message):
-    url = f"https://gate.whapi.cloud/instance{WHAPI_INSTANCE_ID}/sendMessage?token={WHAPI_TOKEN}"
-    payload = {
-        "phone": phone,
-        "message": message
-    }
-    try:
-        response = requests.post(url, json=payload)
-        logging.debug(f"🔁 تم الإرسال إلى {phone}: {response.text}")
-    except Exception as e:
-        logging.error(f"❌ خطأ في الإرسال: {e}")
-
-# استرجاع جميع الصيدليات
+# ========== قاعدة البيانات ==========
 def get_all_pharmacies():
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("SELECT name, description FROM categories")
-    rows = cursor.fetchall()
-    conn.close()
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT name, description FROM categories")
+        rows = c.fetchall()
+        conn.close()
 
-    if not rows:
-        return "🚫 لا توجد صيدليات حالياً."
-    result = "🏥 قائمة الصيدليات:\n\n"
-    for name, desc in rows:
-        result += f"📌 {name}\n{desc}\n\n"
-    return result.strip()
+        if not rows:
+            return "❌ لا توجد بيانات حالياً."
 
-# استرجاع الصيدليات المفتوحة حالياً
+        response = "📋 قائمة الصيدليات:\n\n"
+        for row in rows:
+            response += f"🏥 {row[0]}\n{row[1]}\n\n"
+        return response.strip()
+    except Exception as e:
+        logging.error(f"خطأ أثناء جلب الصيدليات: {e}")
+        return "حدث خطأ أثناء جلب البيانات."
+
 def get_open_pharmacies():
-    now = datetime.now()
-    current_time = now.strftime("%H:%M")
-    current_hour = int(now.strftime("%H"))
-    current_minute = int(now.strftime("%M"))
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("SELECT name, description, morning_start_time, morning_end_time, evening_start_time, evening_end_time FROM categories")
-    rows = cursor.fetchall()
-    conn.close()
+    now = datetime.now().time()
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT name, description, morning_start_time, morning_end_time, evening_start_time, evening_end_time FROM categories")
+        rows = c.fetchall()
+        conn.close()
 
-    open_list = []
+        open_now = []
+        for row in rows:
+            name, desc, m_start, m_end, e_start, e_end = row
+            if (m_start and m_end and time.fromisoformat(m_start) <= now <= time.fromisoformat(m_end)) or \
+               (e_start and e_end and time.fromisoformat(e_start) <= now <= time.fromisoformat(e_end)):
+                open_now.append(f"🏥 {name}\n{desc}")
 
-    for name, desc, m_start, m_end, e_start, e_end in rows:
-        def time_in_range(start, end):
-            try:
-                start_hour, start_minute = map(int, start.split(":"))
-                end_hour, end_minute = map(int, end.split(":"))
-                now_minutes = current_hour * 60 + current_minute
-                start_minutes = start_hour * 60 + start_minute
-                end_minutes = end_hour * 60 + end_minute
-                return start_minutes <= now_minutes <= end_minutes
-            except:
-                return False
+        if not open_now:
+            return "❌ لا توجد صيدليات مفتوحة الآن."
 
-        if time_in_range(m_start, m_end) or time_in_range(e_start, e_end):
-            open_list.append(f"✅ {name}\n{desc}")
+        return "🚪 الصيدليات المفتوحة الآن:\n\n" + "\n\n".join(open_now)
+    except Exception as e:
+        logging.error(f"خطأ أثناء جلب الصيدليات المفتوحة: {e}")
+        return "حدث خطأ أثناء جلب البيانات."
 
-    if not open_list:
-        return "🚫 لا توجد صيدليات مفتوحة حالياً."
+# ========== إرسال الرد ==========
+def send_whatsapp_message(to, message):
+    try:
+        url = f"https://api.ultramsg.com/{ULTRAMSG_INSTANCE_ID}/messages/chat"
+        payload = {"to": to, "body": message}
+        headers = {"Content-Type": "application/json"}
+        response = requests.post(url, json=payload, headers=headers, params={"token": ULTRAMSG_TOKEN})
+        logging.info(f"تم إرسال الرد: {response.text}")
+    except Exception as e:
+        logging.error(f"خطأ أثناء إرسال الرسالة: {e}")
 
-    return "🏥 الصيدليات المفتوحة الآن:\n\n" + "\n\n".join(open_list)
-
-# نقطة استقبال Webhook من Whapi
-@app.route("/webhook/messages/<method>", methods=["POST", "PATCH", "PUT", "DELETE"])
-def webhook_handler(method):
+# ========== Webhook للـ Whapi ==========
+@app.route("/webhook/messages/post", methods=["POST"])
+def webhook():
     data = request.json
-    logging.debug(f"📩 [{method.upper()}] تم الاستلام: {data}")
+    logging.debug(f"تم الاستلام: {data}")
 
     message_obj = data.get("message", {})
     message_text = message_obj.get("text", "").strip()
@@ -102,5 +94,6 @@ def webhook_handler(method):
     send_whatsapp_message(sender, reply)
     return jsonify({"status": "success"})
 
+# ========== التشغيل المحلي ==========
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000)
