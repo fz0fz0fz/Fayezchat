@@ -1,11 +1,7 @@
 from flask import Flask, request, jsonify
 import requests, os
-import logging
 
-# تهيئة الـ logging للتشخيص
-logging.basicConfig(level=logging.DEBUG)
-
-# استيراد كل الخدمات
+# استيراد جميع الخدمات
 from services import (
     governmental,
     pharmacies,
@@ -18,7 +14,7 @@ from services import (
     stationery,
     shops,
     chalets,
-    water,
+    water_truck,
     shovel,
     sand,
     building_materials,
@@ -36,20 +32,20 @@ INSTANCE_ID = "instance130542"
 TOKEN       = "pr2bhaor2vevcrts"
 API_URL     = f"https://api.ultramsg.com/{INSTANCE_ID}/messages/chat"
 
-# خريطة الأرقام للخدمات
+# خريطة رقم ↦ دالة الخدمة
 services_map = {
-    "1": governmental.handle,
-    "2": pharmacies.handle,
-    "3": grocery.handle,
-    "4": vegetables.handle,
-    "5": trips.handle,
-    "6": desserts.handle,
-    "7": home_businesses.handle,
-    "8": restaurants.handle,
-    "9": stationery.handle,
+    "1":  governmental.handle,
+    "2":  pharmacies.handle,
+    "3":  grocery.handle,
+    "4":  vegetables.handle,
+    "5":  trips.handle,
+    "6":  desserts.handle,
+    "7":  home_businesses.handle,
+    "8":  restaurants.handle,
+    "9":  stationery.handle,
     "10": shops.handle,
     "11": chalets.handle,
-    "12": water.handle,
+    "12": water_truck.handle,
     "13": shovel.handle,
     "14": sand.handle,
     "15": building_materials.handle,
@@ -60,7 +56,7 @@ services_map = {
     "20": alarm.handle,
 }
 
-# تحيات والقائمة
+# عبارات التحية والقائمة
 greetings = ["سلام", "السلام", "السلام عليكم", "السلام عليكم ورحمة الله"]
 menu_triggers = ["0", "٠", "صفر", ".", "القائمة", "خدمات", "نقطة", "نقطه"]
 menu_message = """
@@ -91,62 +87,34 @@ menu_message = """
 📝 *أرسل رقم أو اسم الخدمة مباشرة لعرض التفاصيل.*
 """
 
-# تحويل الأرقام العربية إلى لاتينية
-ARABIC2LATIN = str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")
-
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data   = request.get_json(force=True)
-    sender = data.get("data", {}).get("from")
-    msg    = data.get("data", {}).get("body", "")
+    data   = request.get_json(force=True).get("data", {})
+    sender = data.get("from")
+    msg    = data.get("body", "").strip().lower()
 
     if not sender or not msg:
         return jsonify({"success": False}), 200
 
-    # تطبيع النص وتحويل الأرقام
-    normalized = (
-        msg.strip()
-           .replace("ـ", "")
-           .replace("أ", "ا")
-           .replace("إ", "ا")
-           .replace("آ", "ا")
-           .translate(ARABIC2LATIN)
-           .lower()
-    )
-
-    # طباعة للتشخيص
-    logging.debug(f"[DEBUG] raw msg: '{msg}' → normalized: '{normalized}'")
-
-    # محاولة إيجاد معالج الخدمة
-    handler = None
-    if normalized in services_map:
-        handler = services_map[normalized]
-    else:
-        # جرّب أول “توكن” بعد إزالة علامات ترقيم
-        token = normalized.split()[0].rstrip(".,!?")
-        if token in services_map:
-            handler = services_map[token]
-
-    # بناء الرد
-    if handler:
-        reply = handler(msg)
-    elif normalized in greetings:
+    # الرد على التحية
+    if msg in greetings:
         reply = "وعليكم السلام ورحمة الله وبركاته 👋"
-    elif normalized in menu_triggers:
+    # الرد على طلب القائمة
+    elif msg in menu_triggers:
         reply = menu_message
+    # إذا رقم الخدمة معروف
+    elif msg in services_map:
+        reply = services_map[msg](msg)
     else:
         reply = "🤖 عذراً، لم أفهم طلبك. أرسل 0 لعرض القائمة الرئيسية."
 
     # إرسال الرد عبر UltraMsg
-    requests.post(
-        API_URL,
-        data={
-            "token": TOKEN,
-            "to": sender,
-            "body": reply
-        },
-        timeout=10
-    )
+    requests.post(API_URL, data={
+        "token": TOKEN,
+        "to": sender,
+        "body": reply,
+        "priority": 10
+    }, timeout=10)
 
     return jsonify({"success": True}), 200
 
