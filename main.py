@@ -103,15 +103,15 @@ def webhook():
     # تطبيع النص
     normalized = msg.strip().replace("ـ", "").replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").lower()
 
-    # الردود
-    if normalized in greetings:
+    # الردود (مع إعطاء أولوية للأرقام)
+    if normalized in services_map:
+        reply = services_map[normalized](msg)
+
+    elif normalized in greetings:
         reply = "وعليكم السلام ورحمة الله وبركاته 👋"
 
     elif normalized in menu_triggers:
         reply = menu_message
-
-    elif normalized in services_map:
-        reply = services_map[normalized](msg)
 
     else:
         reply = "🤖 عذراً، لم أفهم طلبك. أرسل 0 لعرض القائمة الرئيسية."
