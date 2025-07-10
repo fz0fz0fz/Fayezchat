@@ -1,6 +1,6 @@
 from .governmental import handle as governmental
 from .pharmacies import handle as pharmacies
-from .groceries import handle as groceries
+from .grocery import handle as groceries  # ✅ تم التصحيح هنا
 from .vegetables import handle as vegetables
 from .trips import handle as trips
 from .desserts import handle as desserts
