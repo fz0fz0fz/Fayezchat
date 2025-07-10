@@ -114,12 +114,16 @@ def webhook():
                              .translate(ARABIC2LATIN)
                              .lower())
 
-    # الردود حسب الأولوية
-    if normalized in greetings:
-        reply = "وعليكم السلام ورحمة الله وبركاته 👋"
+    print(f"[LOG] Normalized message: {normalized}")  # ✅ للمراقبة
 
-    elif normalized in services_map:
-        reply = services_map[normalized](msg)
+    # الردود حسب الأولوية
+    first_word = normalized.split()[0]  # نأخذ أول كلمة فقط
+
+    if first_word in services_map:
+        reply = services_map[first_word](msg)
+
+    elif normalized in greetings:
+        reply = "وعليكم السلام ورحمة الله وبركاته 👋"
 
     elif normalized in menu_triggers:
         reply = menu_message
