@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 import requests, os
 
-# استيراد جميع الخدمات
+# استيراد الخدمات
 from services import (
     governmental,
     pharmacies,
@@ -14,13 +14,13 @@ from services import (
     stationery,
     shops,
     chalets,
-    water_truck,
+    water,
     shovel,
     sand,
     building_materials,
     workers,
     stores,
-    butchers,
+    meat,
     school_transport,
     alarm
 )
@@ -32,33 +32,42 @@ INSTANCE_ID = "instance130542"
 TOKEN       = "pr2bhaor2vevcrts"
 API_URL     = f"https://api.ultramsg.com/{INSTANCE_ID}/messages/chat"
 
-# خريطة رقم ↦ دالة الخدمة
+# خريطة الأرقام ↦ الخدمات
 services_map = {
-    "1":  governmental.handle,
-    "2":  pharmacies.handle,
-    "3":  grocery.handle,
-    "4":  vegetables.handle,
-    "5":  trips.handle,
-    "6":  desserts.handle,
-    "7":  home_businesses.handle,
-    "8":  restaurants.handle,
-    "9":  stationery.handle,
+    "1": governmental.handle,
+    "2": pharmacies.handle,
+    "3": grocery.handle,
+    "4": vegetables.handle,
+    "5": trips.handle,
+    "6": desserts.handle,
+    "7": home_businesses.handle,
+    "8": restaurants.handle,
+    "9": stationery.handle,
     "10": shops.handle,
     "11": chalets.handle,
-    "12": water_truck.handle,
+    "12": water.handle,
     "13": shovel.handle,
     "14": sand.handle,
     "15": building_materials.handle,
     "16": workers.handle,
     "17": stores.handle,
-    "18": butchers.handle,
+    "18": meat.handle,
     "19": school_transport.handle,
     "20": alarm.handle,
 }
 
-# عبارات التحية والقائمة
-greetings = ["سلام", "السلام", "السلام عليكم", "السلام عليكم ورحمة الله"]
-menu_triggers = ["0", "٠", "صفر", ".", "القائمة", "خدمات", "نقطة", "نقطه"]
+# تحويل الأرقام العربية إلى لاتينية
+ARABIC2LATIN = str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")
+
+# عبارات ترحيب
+greetings = [
+    "سلام", "السلام", "السلام عليكم", "السلام عليكم ورحمة الله"
+]
+
+# محفزات عرض القائمة
+menu_triggers = ["0", "٠", "صفر", ".", "نقطة", "نقطه", "القائمة", "خدمات"]
+
+# رسالة القائمة
 menu_message = """
 *_أهلا بك في دليل خدمات القرين يمكنك الإستعلام عن الخدمات التالية:_*
 
@@ -89,22 +98,32 @@ menu_message = """
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data   = request.get_json(force=True).get("data", {})
-    sender = data.get("from")
-    msg    = data.get("body", "").strip().lower()
+    data = request.get_json(force=True)
+    sender = data.get("data", {}).get("from")
+    msg = data.get("data", {}).get("body", "").strip()
 
     if not sender or not msg:
         return jsonify({"success": False}), 200
 
-    # الرد على التحية
-    if msg in greetings:
+    # تطبيع النص
+    normalized = msg.strip()
+    normalized = (normalized.replace("ـ", "")
+                             .replace("أ", "ا")
+                             .replace("إ", "ا")
+                             .replace("آ", "ا")
+                             .translate(ARABIC2LATIN)
+                             .lower())
+
+    # الردود حسب الأولوية
+    if normalized in greetings:
         reply = "وعليكم السلام ورحمة الله وبركاته 👋"
-    # الرد على طلب القائمة
-    elif msg in menu_triggers:
+
+    elif normalized in services_map:
+        reply = services_map[normalized](msg)
+
+    elif normalized in menu_triggers:
         reply = menu_message
-    # إذا رقم الخدمة معروف
-    elif msg in services_map:
-        reply = services_map[msg](msg)
+
     else:
         reply = "🤖 عذراً، لم أفهم طلبك. أرسل 0 لعرض القائمة الرئيسية."
 
@@ -112,11 +131,11 @@ def webhook():
     requests.post(API_URL, data={
         "token": TOKEN,
         "to": sender,
-        "body": reply,
-        "priority": 10
-    }, timeout=10)
+        "body": reply
+    })
 
     return jsonify({"success": True}), 200
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
