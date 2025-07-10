@@ -3,7 +3,7 @@ from flask import Flask, request, jsonify
 import sqlite3
 import requests
 import os
-from datetime import datetime
+from datetime import datetime, time
 
 app = Flask(__name__)
 DB_NAME = os.path.join(os.getcwd(), "services.db")
@@ -37,50 +37,61 @@ def send_whatsapp_message(phone, message):
         logging.error(f"خطأ أثناء إرسال الرسالة: {e}")
         return None
 
-# دالة عرض جميع الصيدليات
+# دالة جلب جميع الصيدليات من قاعدة البيانات
 def get_all_pharmacies():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute("SELECT name, description FROM categories")
-    result = c.fetchall()
+    rows = c.fetchall()
     conn.close()
-    return "\n\n".join([f"🏪 {row[0]}\n{row[1]}" for row in result])
+    if not rows:
+        return "❌ لا توجد صيدليات مسجلة حاليًا."
+    result = "📋 قائمة الصيدليات:\n"
+    for name, desc in rows:
+        result += f"\n🏪 {name}\n{desc}\n"
+    return result
 
-# دالة عرض الصيدليات المفتوحة
+# دالة جلب الصيدليات المفتوحة حاليًا
 def get_open_pharmacies():
     now = datetime.now().time()
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    c.execute('''
-        SELECT name, description, morning_start_time, morning_end_time,
-               evening_start_time, evening_end_time
-        FROM categories
-    ''')
-    result = c.fetchall()
+    c.execute("SELECT name, description, morning_start_time, morning_end_time, evening_start_time, evening_end_time FROM categories")
+    rows = c.fetchall()
     conn.close()
 
     open_now = []
-    for row in result:
-        name, description, m_start, m_end, e_start, e_end = row
-        m_start = datetime.strptime(m_start, "%H:%M").time()
-        m_end = datetime.strptime(m_end, "%H:%M").time()
-        e_start = datetime.strptime(e_start, "%H:%M").time()
-        e_end = datetime.strptime(e_end, "%H:%M").time()
+    for row in rows:
+        name, desc, m_start, m_end, e_start, e_end = row
+        if m_start and m_end:
+            m_start_time = datetime.strptime(m_start, "%H:%M").time()
+            m_end_time = datetime.strptime(m_end, "%H:%M").time()
+            if m_start_time <= now <= m_end_time:
+                open_now.append((name, desc))
+                continue
+        if e_start and e_end:
+            e_start_time = datetime.strptime(e_start, "%H:%M").time()
+            e_end_time = datetime.strptime(e_end, "%H:%M").time()
+            if e_start_time <= now <= e_end_time:
+                open_now.append((name, desc))
 
-        if (m_start <= now <= m_end) or (e_start <= now <= e_end):
-            open_now.append(f"🏪 {name}\n{description}")
+    if not open_now:
+        return "❌ لا توجد صيدليات مفتوحة حاليًا."
 
-    return "\n\n".join(open_now) if open_now else "🚫 لا توجد صيدليات مفتوحة الآن."
+    result = "✅ الصيدليات المفتوحة الآن:\n"
+    for name, desc in open_now:
+        result += f"\n🏪 {name}\n{desc}\n"
+    return result
 
-# نقطة الاستقبال من Whapi
-@app.route("/webhook", methods=["POST"])
+# نقطة الاستقبال من Whapi (تم تعديل المسار)
+@app.route("/webhook/messages", methods=["POST"])
 def webhook():
     data = request.json
     logging.debug(f"تم الاستلام: {data}")
 
-    message_obj = data.get("data", {})
-    message_text = message_obj.get("text", {}).get("body", "").strip()
-    sender = message_obj.get("from")
+    message_obj = data.get("message", {})
+    message_text = message_obj.get("text", "").strip()
+    sender = data.get("from")
 
     if not message_text or not sender:
         return jsonify({"status": "ignored", "reason": "missing message or sender"})
