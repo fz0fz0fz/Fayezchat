@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 import requests, os
 
-# استيراد الخدمات
+# استيراد جميع الخدمات
 from services import (
     governmental,
     pharmacies,
@@ -19,6 +19,7 @@ from services import (
     sand,
     building_materials,
     workers,
+    stores,
     butchers,
     school_transport,
     alarm
@@ -49,15 +50,19 @@ services_map = {
     "14": sand.handle,
     "15": building_materials.handle,
     "16": workers.handle,
-    "17": shops.handle,
+    "17": stores.handle,
     "18": butchers.handle,
     "19": school_transport.handle,
     "20": alarm.handle,
 }
 
 # تحيات والقائمة
-greetings = ["سلام", "السلام", "السلام عليكم", "السلام عليكم ورحمة الله"]
-menu_triggers = ["0", "صفر", ".", "القائمة", "خدمات"]
+greetings = [
+    "سلام", "السلام", "السلام عليكم", "السلام عليكم ورحمة الله"
+]
+
+menu_triggers = ["0", "٠", "صفر", ".", "القائمة", "خدمات", "نقطة", "نقطه"]
+
 menu_message = """
 *_أهلا بك في دليل خدمات القرين يمكنك الإستعلام عن الخدمات التالية:_*
 
@@ -88,7 +93,7 @@ menu_message = """
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.json
+    data = request.get_json(force=True)
     sender = data.get("data", {}).get("from")
     msg = data.get("data", {}).get("body", "").strip()
 
@@ -96,19 +101,22 @@ def webhook():
         return jsonify({"success": False}), 200
 
     # تطبيع النص
-    normalized = msg.strip().replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").lower()
+    normalized = msg.strip().replace("ـ", "").replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").lower()
 
-    # رد التحية
-    if any(greet in normalized for greet in greetings):
+    # الردود
+    if normalized in greetings:
         reply = "وعليكم السلام ورحمة الله وبركاته 👋"
-    elif any(trg in normalized for trg in menu_triggers):
+
+    elif normalized in menu_triggers:
         reply = menu_message
+
     elif normalized in services_map:
         reply = services_map[normalized](msg)
+
     else:
         reply = "🤖 عذراً، لم أفهم طلبك. أرسل 0 لعرض القائمة الرئيسية."
 
-    # إرسال الرد
+    # إرسال الرد عبر UltraMsg
     requests.post(API_URL, data={
         "token": TOKEN,
         "to": sender,
@@ -116,6 +124,7 @@ def webhook():
     })
 
     return jsonify({"success": True}), 200
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
