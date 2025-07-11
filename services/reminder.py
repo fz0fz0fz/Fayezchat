@@ -1,32 +1,43 @@
+# services/reminder.py
+import sqlite3
 from datetime import datetime, timedelta
+from pathlib import Path
 
-# ذاكرة مؤقتة لتخزين حالة المستخدمين
-pending_users = {}
+# مسار ملف قاعدة البيانات
+DB_PATH = "/mnt/data/reminders.db"
 
-def handle(msg: str, user_number=None) -> str:
-    text = msg.strip()
+# إنشاء جدول التذكيرات إذا لم يكن موجودًا
+def init_reminder_db() -> None:
+    Path("/mnt/data").mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS reminders (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            sender    TEXT    NOT NULL,
+            type      TEXT    NOT NULL,
+            value     TEXT,
+            remind_at TEXT,
+            active    INTEGER DEFAULT 1
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
 
-    if user_number in pending_users:
-        state = pending_users[user_number]
 
-        # الرد على اختيار مدة التذكير بتغيير الزيت
-        if state["step"] == "oil_change_waiting_duration":
-            del pending_users[user_number]
+init_reminder_db()
 
-            duration_map = {
-                "1": 30,
-                "2": 60,
-                "3": 90
-            }
+# ============ دالة المعالجة الرئيسية ============ #
+def handle(msg: str, sender: str) -> str:
+    """
+    تُعالج جميع رسائل خدمة المنبه، وتُنشئ التذكيرات في قاعدة البيانات.
+    """
+    text = msg.strip().lower()
 
-            days = duration_map.get(text)
-            if not days:
-                return "❌ خيار غير صحيح. أرسل 1 أو 2 أو 3 فقط."
-
-            target_date = datetime.now() + timedelta(days=days)
-            return f"✅ تم حفظ تذكير تغيير الزيت بعد {days} يوم.\n📆 سنذكّرك في {target_date.strftime('%Y-%m-%d')}"
-
-    if text in ["منبه", "20", "٢٠"]:
+    # القائمة الرئيسـية للمنبه
+    if text in {"20", "منبه", "منبّه", "تذكير"}:
         return (
             "*🔔 خدمة المنبه - اختر ما تود التذكير به:*\n\n"
             "1️⃣ تغيير الزيت\n"
@@ -37,15 +48,47 @@ def handle(msg: str, user_number=None) -> str:
             "🛑 أرسل 'توقف' لإيقاف أي تنبيهات مفعّلة."
         )
 
+    # ------------------------------------------------
+    # 1️⃣ تغيير الزيت
+    # ------------------------------------------------
     if text == "1":
-        pending_users[user_number] = {
-            "step": "oil_change_waiting_duration"
-        }
         return (
-            "🛢️ *كل كم تود أن نذكّرك بتغيير الزيت؟*\n"
-            "1️⃣ بعد شهر\n"
-            "2️⃣ بعد شهرين\n"
-            "3️⃣ بعد 3 أشهر"
+            "🛢️ *كم المدة التي ترغب أن نذكرك بعدها لتغيير الزيت؟*\n\n"
+            "1- شهر\n"
+            "2- شهرين\n"
+            "3- 3 أشهر"
         )
 
-    return "❌ خيار غير مفهوم ضمن خدمة المنبه."
+    if text in {"1-1", "1-2", "1-3"}:
+        months = {"1-1": 1, "1-2": 2, "1-3": 3}[text]
+        remind_at = datetime.now() + timedelta(days=30 * months)
+
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute(
+            "INSERT INTO reminders (sender, type, value, remind_at) VALUES (?,?,?,?)",
+            (sender, "تغيير الزيت", f"{months}_months", remind_at.strftime("%Y-%m-%d %H:%M:%S")),
+        )
+        conn.commit()
+        conn.close()
+
+        return f"✅ تم ضبط تذكير تغيير الزيت بعد {months} شهر."
+
+    # ------------------------------------------------
+    # إيقاف جميع التنبيهات
+    # ------------------------------------------------
+    if text == "توقف":
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("UPDATE reminders SET active = 0 WHERE sender = ?", (sender,))
+        conn.commit()
+        conn.close()
+        return "🛑 تم إيقاف جميع التنبيهات بنجاح."
+
+    # ------------------------------------------------
+    # في حال إدخال غير مفهوم
+    # ------------------------------------------------
+    return (
+        "🤖 لم أفهم طلبك داخل خدمة المنبه.\n"
+        "🔙 أرسل 'منبه' لعرض القائمة، أو 'توقف' لإلغاء التنبيهات."
+    )
