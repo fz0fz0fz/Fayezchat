@@ -115,6 +115,9 @@ def webhook():
     elif normalized in menu_triggers:
         reply = menu_message
 
+    elif sender in reminder.pending_users:
+        reply = reminder.handle(msg, sender)
+
     elif normalized in services_map:
         try:
             reply = services_map[normalized](msg, sender)
