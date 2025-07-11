@@ -5,9 +5,8 @@ from services import (
     governmental, pharmacies, grocery, vegetables, trips, desserts,
     home_businesses, restaurants, stationery, shops, chalets, water,
     shovel, sand, building_materials, workers, stores, butchers,
-    school_transport
+    school_transport, reminder
 )
-from services.reminder import handle as reminder  # ✅ تصحيح الاستيراد
 
 app = Flask(__name__)
 
@@ -15,6 +14,7 @@ INSTANCE_ID = "instance130542"
 TOKEN       = "pr2bhaor2vevcrts"
 API_URL     = f"https://api.ultramsg.com/{INSTANCE_ID}/messages/chat"
 
+# الخدمات الأساسية بدون المنبه
 services_map = {
     "1":  governmental,
     "2":  pharmacies,
@@ -37,11 +37,14 @@ services_map = {
     "19": school_transport,
 }
 
+# الكلمات التي تفعّل المنبه
 reminder_keywords = ["20", "٢٠", "منبه", "منبّه", "تذكير"]
 
+# تحيات + القائمة
 greetings = ["سلام", "السلام", "السلام عليكم", "السلام عليكم ورحمة الله"]
 menu_triggers = ["0", "٠", "صفر", ".", "القائمة", "خدمات", "نقطة", "نقطه"]
 
+# رسالة القائمة
 menu_message = """
 *_أهلا بك في دليل خدمات القرين يمكنك الإستعلام عن الخدمات التالية:_*
 
@@ -86,7 +89,7 @@ def webhook():
     elif normalized in menu_triggers:
         reply = menu_message
     elif normalized in reminder_keywords or normalized.startswith("1-") or normalized == "توقف":
-        reply = reminder(msg, sender)  # ✅ تصحيح الاستدعاء
+        reply = reminder(msg, sender)
     elif normalized in services_map:
         try:
             reply = services_map[normalized](msg, sender)
@@ -102,6 +105,13 @@ def webhook():
     })
 
     return jsonify({"success": True}), 200
+
+# 🕒 لتشغيل التذكيرات عبر رابط خارجي (كرون)
+@app.route("/run-reminders", methods=["GET"])
+def run_reminders():
+    from send_reminders import send_due_reminders
+    send_due_reminders()
+    return "✅ Reminder script executed successfully."
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
