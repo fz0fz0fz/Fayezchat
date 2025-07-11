@@ -1,3 +1,23 @@
+from flask import Flask, request, jsonify
+import os
+import requests
+import logging
+from reminder import handle_reminder
+from session import get_session
+from government import handle_government_services
+from pharmacies import handle_pharmacies
+from grocery import handle_grocery
+from restaurants import handle_restaurants
+from shops import handle_shops
+from chalets import handle_chalets
+from sand import handle_sand
+from shovel import handle_shovel
+from butchers import handle_butchers
+from home_businesses import handle_home_businesses
+from building_materials import handle_building_materials
+
+app = Flask(__name__)
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json() or {}
@@ -14,7 +34,7 @@ def webhook():
         reply = handle_reminder(message, sender)
         return jsonify({"reply": reply})
 
-    # ✅ رسالة العودة للقائمة الرئيسية
+    # ✅ العودة للقائمة الرئيسية
     if message in ["0", "رجوع", "عودة", "القائمة"]:
         return jsonify({
             "reply": (
@@ -43,7 +63,7 @@ def webhook():
             )
         })
 
-    # الخدمات حسب الرسائل
+    # ✅ الخدمات حسب الرسالة
     if message in ["1", "حكومي"]:
         return handle_government_services(message, sender)
     elif message in ["2", "صيدلية"]:
@@ -70,5 +90,9 @@ def webhook():
         reply = handle_reminder(message, sender)
         return jsonify({"reply": reply})
 
-    # رد افتراضي
+    # ❓ رد افتراضي
     return jsonify({"reply": "مرحبًا! أرسل رقم الخدمة أو اسمها للحصول على التفاصيل."})
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
