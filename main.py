@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 import requests, os
 
-# --- استيراد جميع الخدمات ---
+# استيراد جميع الخدمات
 from services import (
     governmental,
     pharmacies,
@@ -14,7 +14,7 @@ from services import (
     stationery,
     shops,
     chalets,
-    water_truck,        # <-- الاسم الصحيح
+    water,
     shovel,
     sand,
     building_materials,
@@ -22,7 +22,7 @@ from services import (
     stores,
     butchers,
     school_transport,
-    alarm
+    reminder  # الجديد
 )
 
 app = Flask(__name__)
@@ -32,89 +32,101 @@ INSTANCE_ID = "instance130542"
 TOKEN       = "pr2bhaor2vevcrts"
 API_URL     = f"https://api.ultramsg.com/{INSTANCE_ID}/messages/chat"
 
-# --- أداة تطبيع النص -------------------------------------------------
-AR2LAT = str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")
-def normalize(txt: str) -> str:
-    return (txt.strip()
-               .replace("ـ", "")
-               .replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
-               .translate(AR2LAT)
-               .lower())
-
-# --- خريطة الأرقام والكلمات ↦ دوال الخدمات ---------------------------
+# خريطة الأرقام والكلمات للخدمات
 services_map = {
-    # أضفنا المفاتيح بالأرقام العربية أيضاً
-    "1": governmental.handle,   "١": governmental.handle,
-    "2": pharmacies.handle,     "٢": pharmacies.handle,
-    "3": grocery.handle,        "٣": grocery.handle,
-    "4": vegetables.handle,     "٤": vegetables.handle,
-    "5": trips.handle,          "٥": trips.handle,
-    "6": desserts.handle,       "٦": desserts.handle,
-    "7": home_businesses.handle,"٧": home_businesses.handle,
-    "8": restaurants.handle,    "٨": restaurants.handle,
-    "9": stationery.handle,     "٩": stationery.handle,
-    "10": shops.handle,         "١٠": shops.handle,
-    "11": chalets.handle,       "١١": chalets.handle,
-    "12": water_truck.handle,   "١٢": water_truck.handle,
-    "13": shovel.handle,        "١٣": shovel.handle,
-    "14": sand.handle,          "١٤": sand.handle,
-    "15": building_materials.handle, "١٥": building_materials.handle,
-    "16": workers.handle,       "١٦": workers.handle,
-    "17": stores.handle,        "١٧": stores.handle,
-    "18": butchers.handle,      "١٨": butchers.handle,
-    "19": school_transport.handle, "١٩": school_transport.handle,
-    "20": alarm.handle,         "٢٠": alarm.handle,
-    "منبه": alarm.handle, "منبّه": alarm.handle,
+    "1":  governmental.handle,
+    "2":  pharmacies.handle,
+    "3":  grocery.handle,
+    "4":  vegetables.handle,
+    "5":  trips.handle,
+    "6":  desserts.handle,
+    "7":  home_businesses.handle,
+    "8":  restaurants.handle,
+    "9":  stationery.handle,
+    "10": shops.handle,
+    "11": chalets.handle,
+    "12": water.handle,
+    "13": shovel.handle,
+    "14": sand.handle,
+    "15": building_materials.handle,
+    "16": workers.handle,
+    "17": stores.handle,
+    "18": butchers.handle,
+    "19": school_transport.handle,
+    "20": reminder.handle,
+    "منبه": reminder.handle,
+    "منبّه": reminder.handle,
+    "تذكير": reminder.handle,
 }
 
 # التحيات والكلمات التي تظهر القائمة
-greetings = {
+greetings = [
     "سلام", "السلام", "السلام عليكم", "السلام عليكم ورحمة الله"
-}
-menu_triggers = {"0", "٠", "صفر", ".", "القائمة", "خدمات", "نقطة", "نقطه"}
+]
 
-menu_message = """(نفس نص القائمة كما هو)"""
+menu_triggers = ["0", "٠", "صفر", ".", "القائمة", "خدمات", "نقطة", "نقطه"]
 
-# ------------------------- Webhook ----------------------------------
+menu_message = """
+*_أهلا بك في دليل خدمات القرين يمكنك الإستعلام عن الخدمات التالية:_*
+
+1️⃣ حكومي🏢  
+2️⃣ صيدلية💊  
+3️⃣ بقالة🥤  
+4️⃣ خضار🥬  
+5️⃣ رحلات⛺️  
+6️⃣ حلا🍮  
+7️⃣ أسر منتجة🥧  
+8️⃣ مطاعم🍔  
+9️⃣ قرطاسية📗  
+🔟 محلات 🏪
+----
+11- شالية
+12- وايت
+13- شيول
+14- دفان
+15- مواد بناء وعوازل
+16- عمال
+17- متاجر
+18- ذبائح وملاحم
+19- نقل مدرسي ومشاوير
+20- منبه ⏰
+
+📝 *أرسل رقم أو اسم الخدمة مباشرة لعرض التفاصيل.*
+"""
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data   = request.get_json(force=True)
-    sender = data.get("data", {}).get("from")   # رقم العميل
-    raw    = data.get("data", {}).get("body", "")
+    data = request.get_json(force=True)
+    sender = data.get("data", {}).get("from")
+    msg = data.get("data", {}).get("body", "").strip()
 
-    if not sender or not raw:
-        return jsonify(success=False), 200
+    if not sender or not msg:
+        return jsonify({"success": False}), 200
 
-    msg = normalize(raw)
+    normalized = msg.strip().replace("ـ", "").replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").lower()
 
-    # تحيّة
-    if msg in greetings:
+    if normalized in greetings:
         reply = "وعليكم السلام ورحمة الله وبركاته 👋"
 
-    # القائمة
-    elif msg in menu_triggers:
+    elif normalized in menu_triggers:
         reply = menu_message
 
-    # خدمات
-    elif msg in services_map:
-        service = services_map[msg]
+    elif normalized in services_map:
         try:
-            reply = service(raw, sender)   # يمرّر رقم المستخدم للخدمات التي تحتاجه
+            reply = services_map[normalized](msg, sender)
         except TypeError:
-            reply = service(raw)           # خدمات لا تحتاج الرقم
+            reply = services_map[normalized](msg)
 
     else:
         reply = "🤖 عذراً، لم أفهم طلبك. أرسل 0 لعرض القائمة الرئيسية."
 
-    # إرسال الرد
     requests.post(API_URL, data={
         "token": TOKEN,
         "to": sender,
         "body": reply
-    }, timeout=10)
+    })
 
-    return jsonify(success=True), 200
-
+    return jsonify({"success": True}), 200
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
