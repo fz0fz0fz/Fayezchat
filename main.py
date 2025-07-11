@@ -14,7 +14,7 @@ from services.butchers import handle as handle_butchers
 from services.home_businesses import handle as handle_home_businesses
 from services.reminder import handle as handle_reminder, get_session
 from services.building_materials import handle as handle_building_materials
-from services.governmental import handle as handle_government_services
+from services.governmental import handle_government_services
 
 app = Flask(__name__)
 
@@ -24,9 +24,14 @@ def home():
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.get_json()
-    sender = data.get("sender")
-    message = data.get("message").strip()
+    data = request.get_json() or {}
+
+    # ✅ تأكد أن البيانات موجودة
+    sender = (data.get("sender") or "").strip()
+    message = (data.get("message") or "").strip()
+
+    if not sender or not message:
+        return jsonify({"reply": "حدث خطأ في البيانات المستلمة."})
 
     # 🔁 إذا كان المستخدم داخل جلسة منبه → لا تذهب لأي خدمة ثانية
     session = get_session(sender)
