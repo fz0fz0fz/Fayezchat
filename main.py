@@ -27,10 +27,12 @@ from services import (
 
 app = Flask(__name__)
 
+# بيانات UltraMsg
 INSTANCE_ID = "instance130542"
 TOKEN       = "pr2bhaor2vevcrts"
 API_URL     = f"https://api.ultramsg.com/{INSTANCE_ID}/messages/chat"
 
+# خريطة الأرقام والكلمات للخدمات
 services_map = {
     "1":  governmental.handle,
     "2":  pharmacies.handle,
@@ -51,60 +53,81 @@ services_map = {
     "17": stores.handle,
     "18": butchers.handle,
     "19": school_transport.handle,
-    "20": alarm.handle,           # ← المنبّه
+    "20": alarm.handle,
+    "منبه": alarm.handle,
+    "منبّه": alarm.handle,
 }
 
-ARABIC2LATIN = str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")
-greetings      = ["سلام","السلام","السلام عليكم","السلام عليكم ورحمة الله"]
-menu_triggers  = ["0","٠","صفر",".","القائمة","خدمات","نقطة","نقطه"]
-menu_message = "... (رسالة القائمة كما كانت) ..."
+# التحيات والكلمات التي تظهر القائمة
+greetings = [
+    "سلام", "السلام", "السلام عليكم", "السلام عليكم ورحمة الله"
+]
 
-def normalize(txt: str) -> str:
-    txt = txt.strip().lower()
-    txt = (txt.replace("ـ","")
-             .replace("أ","ا").replace("إ","ا").replace("آ","ا")
-             .translate(ARABIC2LATIN))
-    return txt
+menu_triggers = ["0", "٠", "صفر", ".", "القائمة", "خدمات", "نقطة", "نقطه"]
+
+menu_message = """
+*_أهلا بك في دليل خدمات القرين يمكنك الإستعلام عن الخدمات التالية:_*
+
+1️⃣ حكومي🏢  
+2️⃣ صيدلية💊  
+3️⃣ بقالة🥤  
+4️⃣ خضار🥬  
+5️⃣ رحلات⛺️  
+6️⃣ حلا🍮  
+7️⃣ أسر منتجة🥧  
+8️⃣ مطاعم🍔  
+9️⃣ قرطاسية📗  
+🔟 محلات 🏪
+----
+11- شالية
+12- وايت
+13- شيول
+14- دفان
+15- مواد بناء وعوازل
+16- عمال
+17- متاجر
+18- ذبائح وملاحم
+19- نقل مدرسي ومشاوير
+20- منبه ⏰
+
+📝 *أرسل رقم أو اسم الخدمة مباشرة لعرض التفاصيل.*
+"""
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    payload = request.get_json(force=True).get("data", {})
-    sender  = payload.get("from")
-    body    = payload.get("body", "")
+    data = request.get_json(force=True)
+    sender = data.get("data", {}).get("from")
+    msg = data.get("data", {}).get("body", "").strip()
 
-    if not sender or not body:
+    if not sender or not msg:
         return jsonify({"success": False}), 200
 
-    normalized = normalize(body)
-    first_word = normalized.split()[0] if normalized.split() else ""
+    normalized = msg.strip().replace("ـ", "").replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").lower()
 
-    # 1) خدمة مخصّصة بالأولوية
-    handler = None
-    if first_word in services_map:
-        handler = services_map[first_word]
-    elif normalized in services_map:
-        handler = services_map[normalized]
-
-    if handler:
-        # نحاول تمـرير sender إن كانت الدالة تقبل برقمين:
-        try:
-            reply = handler(body, sender)        # مثال alarm.handle(msg, user)
-        except TypeError:
-            reply = handler(body)                # بقية الخدمات تقبل msg واحد
-    elif normalized in greetings:
+    if normalized in greetings:
         reply = "وعليكم السلام ورحمة الله وبركاته 👋"
+
     elif normalized in menu_triggers:
         reply = menu_message
+
+    elif normalized in services_map:
+        # بعض الخدمات تحتاج رقم المستخدم
+        try:
+            reply = services_map[normalized](msg, sender)
+        except TypeError:
+            reply = services_map[normalized](msg)
+
     else:
         reply = "🤖 عذراً، لم أفهم طلبك. أرسل 0 لعرض القائمة الرئيسية."
 
     requests.post(API_URL, data={
         "token": TOKEN,
         "to": sender,
-        "body": reply,
-        "priority": 10
+        "body": reply
     })
+
     return jsonify({"success": True}), 200
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
