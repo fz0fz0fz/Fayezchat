@@ -1,5 +1,3 @@
-# main.py
-
 from flask import Flask, request, jsonify
 import requests, os
 
@@ -7,7 +5,7 @@ from services import (
     governmental, pharmacies, grocery, vegetables, trips, desserts,
     home_businesses, restaurants, stationery, shops, chalets, water,
     shovel, sand, building_materials, workers, stores, butchers,
-    school_transport, reminder
+    school_transport, reminder  # <-- يحتوي على handle
 )
 
 app = Flask(__name__)
@@ -16,6 +14,7 @@ INSTANCE_ID = "instance130542"
 TOKEN       = "pr2bhaor2vevcrts"
 API_URL     = f"https://api.ultramsg.com/{INSTANCE_ID}/messages/chat"
 
+# خريطة الأرقام للخدمات العامة (باستثناء رقم 20 لأنه لمنبه)
 services_map = {
     "1":  governmental,
     "2":  pharmacies,
@@ -38,8 +37,10 @@ services_map = {
     "19": school_transport,
 }
 
+# مفاتيح المنبه
 reminder_keywords = ["20", "٢٠", "منبه", "منبّه", "تذكير"]
 
+# تحيات وقائمة
 greetings = ["سلام", "السلام", "السلام عليكم", "السلام عليكم ورحمة الله"]
 menu_triggers = ["0", "٠", "صفر", ".", "القائمة", "خدمات", "نقطة", "نقطه"]
 
@@ -84,15 +85,19 @@ def webhook():
 
     if normalized in greetings:
         reply = "وعليكم السلام ورحمة الله وبركاته 👋"
+
     elif normalized in menu_triggers:
         reply = menu_message
-    elif normalized in reminder_keywords:
-        reply = reminder(msg, sender)
+
+    elif normalized in reminder_keywords or normalized.startswith("1-"):
+        reply = reminder.handle(msg, sender)
+
     elif normalized in services_map:
         try:
             reply = services_map[normalized](msg, sender)
         except TypeError:
             reply = services_map[normalized](msg)
+
     else:
         reply = "🤖 عذراً، لم أفهم طلبك. أرسل 0 لعرض القائمة الرئيسية."
 
