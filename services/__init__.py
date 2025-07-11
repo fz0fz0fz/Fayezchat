@@ -1,4 +1,5 @@
-# من كل ملف خدمة استيراد دوال handle
+# services/__init__.py
+
 from .governmental import handle as governmental
 from .pharmacies import handle as pharmacies
 from .grocery import handle as grocery
@@ -18,4 +19,11 @@ from .workers import handle as workers
 from .stores import handle as stores
 from .butchers import handle as butchers
 from .transport import handle as school_transport
-from .reminder import handle as reminder  # تم التبديل من alarm إلى reminder
+from .reminder import handle as reminder
+
+__all__ = [
+    "governmental", "pharmacies", "grocery", "vegetables", "trips", "desserts",
+    "home_businesses", "restaurants", "stationery", "shops", "chalets", "water",
+    "shovel", "sand", "building_materials", "workers", "stores", "butchers",
+    "school_transport", "reminder"
+]
