@@ -1,70 +1,12 @@
-import sqlite3
-from datetime import datetime, timedelta
-from typing import Optional
-
-REMINDERS_DB = "reminders.db"
-SESSIONS_DB = "sessions.db"
-
-# ========== إنشاء قواعد البيانات ==========
-
-def init_reminders_db():
-    conn = sqlite3.connect(REMINDERS_DB)
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS reminders (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            sender TEXT NOT NULL,
-            type TEXT NOT NULL,
-            value TEXT,
-            remind_at TEXT,
-            interval_minutes INTEGER,
-            active INTEGER DEFAULT 1
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-def init_sessions_db():
-    conn = sqlite3.connect(SESSIONS_DB)
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS sessions (
-            sender TEXT PRIMARY KEY,
-            current_state TEXT
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-init_reminders_db()
-init_sessions_db()
-
-# ========== أدوات الجلسات ==========
-
-def set_session(sender: str, state: Optional[str]):
-    conn = sqlite3.connect(SESSIONS_DB)
-    c = conn.cursor()
-    if state:
-        c.execute("REPLACE INTO sessions (sender, current_state) VALUES (?, ?)", (sender, state))
-    else:
-        c.execute("DELETE FROM sessions WHERE sender = ?", (sender,))
-    conn.commit()
-    conn.close()
-
-def get_session(sender: str) -> Optional[str]:
-    conn = sqlite3.connect(SESSIONS_DB)
-    c = conn.cursor()
-    c.execute("SELECT current_state FROM sessions WHERE sender = ?", (sender,))
-    row = c.fetchone()
-    conn.close()
-    return row[0] if row else None
-
-# ========== الدالة الرئيسية للتعامل مع الرسائل ==========
-
 def handle(msg: str, sender: str) -> str:
     text = msg.strip().lower()
 
-    # إيقاف التنبيهات
+    # 🔙 الرجوع للقائمة الرئيسية
+    if text == "0":
+        set_session(sender, None)
+        return "🔙 تم الرجوع للقائمة الرئيسية.\n\nأرسل رقم الخدمة أو اسمها للحصول على التفاصيل."
+
+    # 🛑 إيقاف التنبيهات
     if text == "توقف":
         conn = sqlite3.connect(REMINDERS_DB)
         c = conn.cursor()
@@ -86,7 +28,8 @@ def handle(msg: str, sender: str) -> str:
             "3️⃣ تذكير استغفار\n"
             "4️⃣ تذكير الصلاة على النبي ﷺ يوم الجمعة\n"
             "5️⃣ تذكير بأخذ الدواء\n\n"
-            "🛑 أرسل 'توقف' لإيقاف أي تنبيهات مفعّلة."
+            "🛑 أرسل 'توقف' لإيقاف أي تنبيهات مفعّلة.\n"
+            "0️⃣ للرجوع إلى القائمة الرئيسية."
         )
 
     # ========== ❷ اختيار أحد عناصر المنبه ==========
