@@ -1,38 +1,21 @@
+# main.py
+
 from flask import Flask, request, jsonify
 import requests, os
 
-# استيراد الدوال جاهزة من الحزمة services
 from services import (
-    governmental,
-    pharmacies,
-    grocery,
-    vegetables,
-    trips,
-    desserts,
-    home_businesses,
-    restaurants,
-    stationery,
-    shops,
-    chalets,
-    water,
-    shovel,
-    sand,
-    building_materials,
-    workers,
-    stores,
-    butchers,
-    school_transport,
-    reminder
+    governmental, pharmacies, grocery, vegetables, trips, desserts,
+    home_businesses, restaurants, stationery, shops, chalets, water,
+    shovel, sand, building_materials, workers, stores, butchers,
+    school_transport, reminder
 )
 
 app = Flask(__name__)
 
-# بيانات UltraMsg
 INSTANCE_ID = "instance130542"
 TOKEN       = "pr2bhaor2vevcrts"
 API_URL     = f"https://api.ultramsg.com/{INSTANCE_ID}/messages/chat"
 
-# خريطة الأرقام والأسماء ➜ الدوال مباشرةً (من دون .handle)
 services_map = {
     "1":  governmental,
     "2":  pharmacies,
@@ -53,11 +36,9 @@ services_map = {
     "17": stores,
     "18": butchers,
     "19": school_transport,
-    "20": reminder,
-    "منبه":  reminder,
-    "منبّه": reminder,
-    "تذكير": reminder,
 }
+
+reminder_keywords = ["20", "٢٠", "منبه", "منبّه", "تذكير"]
 
 greetings = ["سلام", "السلام", "السلام عليكم", "السلام عليكم ورحمة الله"]
 menu_triggers = ["0", "٠", "صفر", ".", "القائمة", "خدمات", "نقطة", "نقطه"]
@@ -94,25 +75,24 @@ menu_message = """
 def webhook():
     data = request.get_json(force=True)
     sender = data.get("data", {}).get("from")
-    msg    = data.get("data", {}).get("body", "").strip()
+    msg = data.get("data", {}).get("body", "").strip()
 
     if not sender or not msg:
         return jsonify({"success": False}), 200
 
-    normalized = msg.replace("ـ", "").replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").lower()
+    normalized = msg.strip().replace("ـ", "").replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").lower()
 
     if normalized in greetings:
         reply = "وعليكم السلام ورحمة الله وبركاته 👋"
-
     elif normalized in menu_triggers:
         reply = menu_message
-
+    elif normalized in reminder_keywords:
+        reply = reminder(msg, sender)
     elif normalized in services_map:
         try:
-            reply = services_map[normalized](msg, sender)   # دوال تقبل رقم المستخدم إن لزم
+            reply = services_map[normalized](msg, sender)
         except TypeError:
             reply = services_map[normalized](msg)
-
     else:
         reply = "🤖 عذراً، لم أفهم طلبك. أرسل 0 لعرض القائمة الرئيسية."
 
@@ -123,7 +103,6 @@ def webhook():
     })
 
     return jsonify({"success": True}), 200
-
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
