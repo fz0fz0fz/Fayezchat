@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 import requests, os
 
-# استيراد جميع الخدمات كـ دوال .handle
+# استيراد الدوال جاهزة من الحزمة services
 from services import (
     governmental,
     pharmacies,
@@ -32,42 +32,36 @@ INSTANCE_ID = "instance130542"
 TOKEN       = "pr2bhaor2vevcrts"
 API_URL     = f"https://api.ultramsg.com/{INSTANCE_ID}/messages/chat"
 
-# خريطة الأرقام والكلمات للخدمات
+# خريطة الأرقام والأسماء ➜ الدوال مباشرةً (من دون .handle)
 services_map = {
-    "1":  governmental.handle,
-    "2":  pharmacies.handle,
-    "3":  grocery.handle,
-    "4":  vegetables.handle,
-    "5":  trips.handle,
-    "6":  desserts.handle,
-    "7":  home_businesses.handle,
-    "8":  restaurants.handle,
-    "9":  stationery.handle,
-    "10": shops.handle,
-    "11": chalets.handle,
-    "12": water.handle,
-    "13": shovel.handle,
-    "14": sand.handle,
-    "15": building_materials.handle,
-    "16": workers.handle,
-    "17": stores.handle,
-    "18": butchers.handle,
-    "19": school_transport.handle,
-    "20": reminder.handle,
-    "منبه":  reminder.handle,
-    "منبّه": reminder.handle,
-    "تذكير": reminder.handle,
+    "1":  governmental,
+    "2":  pharmacies,
+    "3":  grocery,
+    "4":  vegetables,
+    "5":  trips,
+    "6":  desserts,
+    "7":  home_businesses,
+    "8":  restaurants,
+    "9":  stationery,
+    "10": shops,
+    "11": chalets,
+    "12": water,
+    "13": shovel,
+    "14": sand,
+    "15": building_materials,
+    "16": workers,
+    "17": stores,
+    "18": butchers,
+    "19": school_transport,
+    "20": reminder,
+    "منبه":  reminder,
+    "منبّه": reminder,
+    "تذكير": reminder,
 }
 
-# التحيات والكلمات التي تظهر القائمة
-greetings = [
-    "سلام", "السلام", "السلام عليكم", "السلام عليكم ورحمة الله"
-]
-
-# الكلمات التي تستدعي القائمة
+greetings = ["سلام", "السلام", "السلام عليكم", "السلام عليكم ورحمة الله"]
 menu_triggers = ["0", "٠", "صفر", ".", "القائمة", "خدمات", "نقطة", "نقطه"]
 
-# رسالة القائمة
 menu_message = """
 *_أهلا بك في دليل خدمات القرين يمكنك الإستعلام عن الخدمات التالية:_*
 
@@ -98,16 +92,14 @@ menu_message = """
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    print("🚨 تم تشغيل الكود الجديد 🚨")
-
     data = request.get_json(force=True)
     sender = data.get("data", {}).get("from")
-    msg = data.get("data", {}).get("body", "").strip()
+    msg    = data.get("data", {}).get("body", "").strip()
 
     if not sender or not msg:
         return jsonify({"success": False}), 200
 
-    normalized = msg.strip().replace("ـ", "").replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").lower()
+    normalized = msg.replace("ـ", "").replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").lower()
 
     if normalized in greetings:
         reply = "وعليكم السلام ورحمة الله وبركاته 👋"
@@ -117,14 +109,13 @@ def webhook():
 
     elif normalized in services_map:
         try:
-            reply = services_map[normalized](msg, sender)
+            reply = services_map[normalized](msg, sender)   # دوال تقبل رقم المستخدم إن لزم
         except TypeError:
             reply = services_map[normalized](msg)
 
     else:
         reply = "🤖 عذراً، لم أفهم طلبك. أرسل 0 لعرض القائمة الرئيسية."
 
-    # إرسال الرد عبر UltraMsg
     requests.post(API_URL, data={
         "token": TOKEN,
         "to": sender,
@@ -132,6 +123,7 @@ def webhook():
     })
 
     return jsonify({"success": True}), 200
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
