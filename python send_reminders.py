@@ -1,5 +1,7 @@
+# send_reminders.py
+
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 
 # بيانات UltraMsg
@@ -15,20 +17,33 @@ def send_due_reminders():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
 
-    c.execute("SELECT id, sender, type FROM reminders WHERE active = 1 AND remind_at <= ?", (now,))
+    # جلب التذكيرات المستحقة
+    c.execute("""
+        SELECT id, sender, type, interval_minutes 
+        FROM reminders 
+        WHERE active = 1 AND remind_at <= ?
+    """, (now,))
     reminders = c.fetchall()
 
-    for reminder_id, sender, reminder_type in reminders:
-        message = f"⏰ تذكير: {reminder_type} اليوم."
+    for reminder_id, sender, reminder_type, interval in reminders:
+        message = f"⏰ تذكير: {reminder_type} الآن."
 
+        # إرسال الرسالة عبر UltraMsg
         requests.post(API_URL, data={
             "token": TOKEN,
             "to": sender,
             "body": message
         })
 
-        c.execute("UPDATE reminders SET active = 0 WHERE id = ?", (reminder_id,))
-        print(f"✅ تم إرسال التذكير لـ {sender}: {reminder_type}")
+        if interval:
+            # إعادة جدولة التذكير التالي
+            next_time = datetime.now() + timedelta(minutes=interval)
+            c.execute("UPDATE reminders SET remind_at = ? WHERE id = ?", (next_time.strftime("%Y-%m-%d %H:%M:%S"), reminder_id))
+            print(f"🔁 إعادة جدولة {reminder_type} لـ {sender} بعد {interval} دقيقة.")
+        else:
+            # إيقاف التذكير إذا كان لمرة واحدة
+            c.execute("UPDATE reminders SET active = 0 WHERE id = ?", (reminder_id,))
+            print(f"✅ تم إرسال تذكير لمرة واحدة لـ {sender}: {reminder_type}")
 
     conn.commit()
     conn.close()
