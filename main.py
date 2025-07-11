@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 import requests, os
 
-# استيراد جميع الخدمات
+# استيراد جميع الخدمات كدوال مباشرة
 from services import (
     governmental,
     pharmacies,
@@ -32,40 +32,42 @@ INSTANCE_ID = "instance130542"
 TOKEN       = "pr2bhaor2vevcrts"
 API_URL     = f"https://api.ultramsg.com/{INSTANCE_ID}/messages/chat"
 
-# خريطة الأرقام والكلمات للخدمات
+# خريطة الأرقام والكلمات للخدمات (بدون .handle)
 services_map = {
-    "1":  governmental.handle,
-    "2":  pharmacies.handle,
-    "3":  grocery.handle,
-    "4":  vegetables.handle,
-    "5":  trips.handle,
-    "6":  desserts.handle,
-    "7":  home_businesses.handle,
-    "8":  restaurants.handle,
-    "9":  stationery.handle,
-    "10": shops.handle,
-    "11": chalets.handle,
-    "12": water.handle,
-    "13": shovel.handle,
-    "14": sand.handle,
-    "15": building_materials.handle,
-    "16": workers.handle,
-    "17": stores.handle,
-    "18": butchers.handle,
-    "19": school_transport.handle,
-    "20": reminder.handle,
-    "منبه": reminder.handle,
-    "منبّه": reminder.handle,
-    "تذكير": reminder.handle,
+    "1":  governmental,
+    "2":  pharmacies,
+    "3":  grocery,
+    "4":  vegetables,
+    "5":  trips,
+    "6":  desserts,
+    "7":  home_businesses,
+    "8":  restaurants,
+    "9":  stationery,
+    "10": shops,
+    "11": chalets,
+    "12": water,
+    "13": shovel,
+    "14": sand,
+    "15": building_materials,
+    "16": workers,
+    "17": stores,
+    "18": butchers,
+    "19": school_transport,
+    "20": reminder,
+    "منبه": reminder,
+    "منبّه": reminder,
+    "تذكير": reminder,
 }
 
-# التحيات والكلمات التي تظهر القائمة
+# كلمات التحية
 greetings = [
     "سلام", "السلام", "السلام عليكم", "السلام عليكم ورحمة الله"
 ]
 
+# الكلمات التي تعرض القائمة
 menu_triggers = ["0", "٠", "صفر", ".", "القائمة", "خدمات", "نقطة", "نقطه"]
 
+# نص القائمة
 menu_message = """
 *_أهلا بك في دليل خدمات القرين يمكنك الإستعلام عن الخدمات التالية:_*
 
