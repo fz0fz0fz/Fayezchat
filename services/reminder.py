@@ -5,7 +5,7 @@ from services.session import get_session, set_session
 
 DB_PATH = "reminders.db"
 
-# ============ إنشاء قاعدة البيانات ============
+# ============ إنشاء الجدول إن لم يكن موجودًا ============
 def init_reminder_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -20,8 +20,12 @@ def init_reminder_db():
     ''')
     conn.commit()
     conn.close()
+    print("✅ تم إنشاء قاعدة البيانات reminders.db إن لم تكن موجودة.")
 
-# ============ حفظ تذكير ============
+# ✅ استدعاء التهيئة عند تشغيل الملف
+init_reminder_db()
+
+# ============ حفظ تذكير جديد ============
 def save_reminder(user_id, reminder_type, message, remind_at):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -32,7 +36,7 @@ def save_reminder(user_id, reminder_type, message, remind_at):
     conn.commit()
     conn.close()
 
-# ============ حذف تذكيرات ============
+# ============ حذف جميع التذكيرات ============
 def delete_all_reminders(user_id):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -41,7 +45,7 @@ def delete_all_reminders(user_id):
     conn.close()
     return {"reply": "✅ تم حذف جميع التذكيرات الخاصة بك.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
 
-# ============ عرض التذكيرات ============
+# ============ عرض تذكيرات المستخدم ============
 def list_user_reminders(user_id):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -58,7 +62,7 @@ def list_user_reminders(user_id):
     reply += "\n↩️ للرجوع (00) | 🏠 رئيسية (0)"
     return {"reply": reply}
 
-# ============ النصوص ============
+# ============ القوائم ============
 REMINDER_MENU_TEXT = (
     "⏰ *منبه*\n\n"
     "اختر نوع التذكير الذي تريده:\n\n"
@@ -75,7 +79,7 @@ MAIN_MENU_TEXT = (
     "20- منبه 📆"
 )
 
-# ============ المعالجة ============
+# ============ المعالجة الرئيسية ============
 def handle(msg: str, sender: str) -> dict:
     session = get_session(sender)
     text = msg.strip()
@@ -85,16 +89,10 @@ def handle(msg: str, sender: str) -> dict:
         return {"reply": MAIN_MENU_TEXT}
 
     if text == "00":
-        if session:
-            last_menu = session.get("last_menu")
-            if last_menu:
-                set_session(sender, {"menu": last_menu, "last_menu": "main"})
-
-                if last_menu == "reminder_main":
-                    return {"reply": REMINDER_MENU_TEXT}
-                # لاحقًا يمكنك إضافة: if last_menu == "workers_main": return {..}
-
-            return {"reply": MAIN_MENU_TEXT}
+        if session and "last_menu" in session:
+            last_menu = session["last_menu"]
+            set_session(sender, {"menu": last_menu, "last_menu": "main"})
+            return handle(last_menu, sender)
         else:
             return {"reply": MAIN_MENU_TEXT}
 
