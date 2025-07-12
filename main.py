@@ -1,55 +1,67 @@
 import logging
-import os
 from flask import Flask, request, jsonify
+import os
+from services.reminder import handle as handle_reminder
 from services.session import get_session, set_session
-from services.reminder import handle as handle_reminder, MAIN_MENU_TEXT
 
 app = Flask(__name__)
 
-# إعداد التسجيل
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(message)s"
-)
+# إعداد السجل
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-# ————————— Health-check —————————
-@app.route("/", methods=["GET"])
+@app.route("/")
 def index():
-    return "OK", 200
+    return "خدمة واتساب بوت تعمل ✅"
 
-# ————————— Webhook —————————
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.get_json() or {}
-    sender = (data.get("from") or "").strip()
-    message = (data.get("body") or "").strip()
+    payload = request.json
+    event_type = payload.get("event_type")
 
-    # ✅ طباعة لتشخيص أخطاء 400
-    if not sender or not message:
-        logging.warning(f"🚨 بيانات غير صالحة في Webhook: {data}")
-        return jsonify({"error": "Invalid data", "received": data}), 400
+    if event_type != "message_received":
+        return jsonify({"status": "ignored"}), 200
 
-    # 1) لو في جلسة منبّه نشغّل منطق التذكير
+    data = payload.get("data", {})
+    message = data.get("body")
+    sender = data.get("from")
+
+    # ✅ تجاهل الرسائل الناقصة بدون إيقاف السيرفر
+    if not message or not sender:
+        logging.warning(f"🚨 تم تجاهل رسالة ناقصة: {data}")
+        return jsonify({"status": "ignored"}), 200
+
+    message = message.strip()
+
+    logging.info(f"📥 Received message from {sender}: {message}")
+
+    # تحديد المعالج حسب الجلسة أو نوع الطلب
     session = get_session(sender)
-    if session and session.startswith("reminder"):
-        result = handle_reminder(message, sender)
-        return jsonify(result)
+    response = handle_reminder(message, sender)
 
-    # 2) رجوع للقائمة الرئيسية
-    if message in ["0", "رجوع", "عودة", "القائمة"]:
-        set_session(sender, None)
-        return jsonify({"reply": MAIN_MENU_TEXT})
+    # إرسال الرد إن وُجد
+    if response and "reply" in response:
+        send_whatsapp_message(sender, response["reply"])
+        return jsonify({"status": "sent"}), 200
 
-    # 3) دخول قائمة المنبّه
-    if message in ["20", "٢٠", "منبه", "منبّه", "تذكير"]:
-        result = handle_reminder(message, sender)
-        return jsonify(result)
+    return jsonify({"status": "no_action"}), 200
 
-    # 4) افتراضي
-    return jsonify({
-        "reply": "👋 أهلاً! أرسل:\n0 للقائمة الرئيسية\n20 للمنبّه"
-    })
+def send_whatsapp_message(to, message):
+    import requests
+    ULTRAMSG_INSTANCE_ID = os.getenv("ULTRAMSG_INSTANCE_ID", "instance130542")
+    ULTRAMSG_TOKEN = os.getenv("ULTRAMSG_TOKEN", "pr2bhaor2vevcrts")
+    ULTRAMSG_URL = f"https://api.ultramsg.com/{ULTRAMSG_INSTANCE_ID}/messages/chat"
+
+    payload = {
+        "token": ULTRAMSG_TOKEN,
+        "to": to,
+        "body": message
+    }
+
+    try:
+        res = requests.post(ULTRAMSG_URL, data=payload)
+        logging.info(f"📤 Message sent: {res.status_code} | {res.text}")
+    except Exception as e:
+        logging.error(f"❌ Failed to send message: {e}")
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(debug=True)
