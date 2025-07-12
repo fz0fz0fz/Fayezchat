@@ -26,7 +26,10 @@ def send_due_reminders():
     reminders = c.fetchall()
 
     for reminder_id, sender, reminder_type, interval in reminders:
-        message = f"⏰ تذكير: {reminder_type} الآن."
+        if reminder_type == "موعد":
+            message = "🩺 تذكير: غدًا موعد زيارتك للمستشفى أو مناسبتك. نتمنى لك التوفيق! 🌿"
+        else:
+            message = f"⏰ تذكير: {reminder_type} الآن."
 
         # إرسال الرسالة عبر UltraMsg
         requests.post(API_URL, data={
