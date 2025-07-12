@@ -1,59 +1,51 @@
-# services/reminder.py
 import os
 import sqlite3
+import re
 from datetime import datetime, timedelta
 from services.session import get_session, set_session
 
 REMINDERS_DB = os.getenv("REMINDERS_DB_PATH", "reminders.db")
 
 def init_reminder_db():
-    """إنشاء جدول التذكيرات إذا لم يكن موجودًا."""
     conn = sqlite3.connect(REMINDERS_DB)
     c = conn.cursor()
-    c.execute(
-        """
+    c.execute('''
         CREATE TABLE IF NOT EXISTS reminders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             sender TEXT NOT NULL,
-            type   TEXT NOT NULL,
+            type TEXT NOT NULL,
             interval_minutes INTEGER,
             remind_at TEXT NOT NULL,
             active INTEGER DEFAULT 1
         )
-        """
-    )
+    ''')
     conn.commit()
     conn.close()
 
-# استدعاء التهيئة مرة واحدة عند استيراد الملف
-init_reminder_db()
-
-# نصّ القائمة الرئيسية المختصر
 MAIN_MENU_TEXT = (
-    "*أهلاً بك في دليل خدمات القرين*\n"
+    "أهلا بك في دليل خدمات القرين\n"
+    "يمكنك الإستعلام عن الخدمات التالية:\n\n"
     "1️⃣ حكومي🏢\n"
     "20- منبه📆"
 )
 
 def handle(msg: str, sender: str):
     text = msg.strip().lower()
+    session = get_session(sender)
 
-    # ——— 0 : الرجوع للقائمة الرئيسية ———
     if text == "0":
         set_session(sender, None)
         return {"reply": MAIN_MENU_TEXT}
 
-    # ——— توقــف : إيقاف كل التنبيهات ———
     if text == "توقف":
-        with sqlite3.connect(REMINDERS_DB) as conn:
-            conn.execute("UPDATE reminders SET active = 0 WHERE sender = ?", (sender,))
+        conn = sqlite3.connect(REMINDERS_DB)
+        c = conn.cursor()
+        c.execute("UPDATE reminders SET active = 0 WHERE sender = ?", (sender,))
+        conn.commit()
+        conn.close()
         set_session(sender, None)
         return {"reply": "🛑 تم إيقاف جميع التنبيهات بنجاح."}
 
-    # جلسة المستخدم الحالية (إن وُجدت)
-    session = get_session(sender)
-
-    # ——— فتح قائمة المنبّه ———
     if text in {"20", "٢٠", "منبه", "تذكير", "منبّه"}:
         set_session(sender, "reminder_menu")
         return {"reply": (
@@ -64,10 +56,9 @@ def handle(msg: str, sender: str):
             "4️⃣ تذكير صلاة الجمعة\n"
             "5️⃣ تذكير الدواء\n\n"
             "🛑 أرسل 'توقف' لإيقاف أي تنبيهات.\n"
-            "0️⃣ للرجوع إلى القائمة الرئيسية."
+            "0️⃣ للرجوع للقائمة الرئيسية."
         )}
 
-    # ——— داخل قائمة المنبّه ———
     if session == "reminder_menu":
         if text == "1":
             set_session(sender, "oil_change_duration")
@@ -79,8 +70,8 @@ def handle(msg: str, sender: str):
         if text == "2":
             set_session(sender, "appointment_date")
             return {"reply": (
-                "📅 أرسل تاريخ الموعد بصيغة *YYYY-MM-DD* (ميلادي).\n"
-                "مثال: 2025-08-17\n\n"
+                "📅 أرسل تاريخ الموعد بصيغة:\n"
+                "اليوم-الشهر-السنة مثل: 17-08-2025 أو 17/8/2025\n\n"
                 "↩️ للرجوع (00) | 🏠 رئيسية (0)"
             )}
         if text == "3":
@@ -91,59 +82,68 @@ def handle(msg: str, sender: str):
             )}
         return {"reply": "↩️ اختر رقم صحيح أو 'توقف'."}
 
-    # ——— ❶ تغيير الزيت ———
     if session == "oil_change_duration":
         if text == "00":
             set_session(sender, "reminder_menu")
             return handle("20", sender)
         if text in {"1", "2", "3"}:
             months = int(text)
-            remind_at = datetime.now() + timedelta(days=30 * months)
-            with sqlite3.connect(REMINDERS_DB) as conn:
-                conn.execute(
-                    "INSERT INTO reminders (sender, type, remind_at) VALUES (?, ?, ?)",
-                    (sender, "تغيير الزيت", remind_at.strftime("%Y-%m-%d %H:%M:%S"))
-                )
+            at = datetime.now() + timedelta(days=30 * months)
+            conn = sqlite3.connect(REMINDERS_DB)
+            c = conn.cursor()
+            c.execute(
+                "INSERT INTO reminders (sender,type,remind_at) VALUES (?,?,?)",
+                (sender, "تغيير الزيت", at.strftime("%Y-%m-%d %H:%M:%S"))
+            )
+            conn.commit(); conn.close()
             set_session(sender, None)
-            return {"reply": f"✅ تم الضبط بعد {months} شهر."}
-        return {"reply": "📌 اختر 1 أو 2 أو 3."}
+            return {"reply": f"✅ تم ضبط تذكير تغيير الزيت بعد {months} شهر."}
+        return {"reply": "📌 1، 2 أو 3."}
 
-    # ——— ❷ موعد مستشفى أو مناسبة ———
     if session == "appointment_date":
         if text == "00":
             set_session(sender, "reminder_menu")
             return handle("20", sender)
         try:
-            date_obj = datetime.strptime(text, "%Y-%m-%d")
-            remind_at = date_obj - timedelta(days=1)   # قبل بيوم
-            with sqlite3.connect(REMINDERS_DB) as conn:
-                conn.execute(
-                    "INSERT INTO reminders (sender, type, remind_at) VALUES (?, ?, ?)",
-                    (sender, "موعد", remind_at.strftime("%Y-%m-%d %H:%M:%S"))
-                )
-            set_session(sender, None)
-            return {"reply": f"📌 تم ضبط التذكير، سيتم تذكيرك يوم {remind_at.date()}."}
-        except ValueError:
-            return {"reply": "❌ صيغة التاريخ خطأ. استخدم YYYY-MM-DD (مثل 2025-08-17)."}
+            # دعم تنسيقات مختلفة للتاريخ
+            pattern = r"(\d{1,2})[- /.\\_](\d{1,2})[- /.\\_](\d{4})"
+            match = re.match(pattern, text)
+            if not match:
+                raise ValueError("Invalid format")
 
-    # ——— ❸ استغفار دوري ———
+            day, month, year = map(int, match.groups())
+            date = datetime(year, month, day)
+            remind_at = date - timedelta(days=1)
+
+            conn = sqlite3.connect(REMINDERS_DB)
+            c = conn.cursor()
+            c.execute(
+                "INSERT INTO reminders (sender, type, remind_at) VALUES (?, ?, ?)",
+                (sender, "موعد مستشفى أو مناسبة", remind_at.strftime("%Y-%m-%d %H:%M:%S"))
+            )
+            conn.commit(); conn.close()
+            set_session(sender, None)
+            return {"reply": f"📌 تم ضبط التذكير، سيتم تذكيرك يوم {remind_at.date()} بإذن الله."}
+        except:
+            return {"reply": "❌ صيغة التاريخ غير صحيحة. مثال: 17-08-2025 أو 17/8/2025"}
+
     if session == "istighfar_interval":
         if text == "00":
             set_session(sender, "reminder_menu")
             return handle("20", sender)
-        map_i = {"1": 30, "2": 60, "3": 120}
+        map_i = {"1":30,"2":60,"3":120}
         if text in map_i:
             mins = map_i[text]
-            remind_at = datetime.now() + timedelta(minutes=mins)
-            with sqlite3.connect(REMINDERS_DB) as conn:
-                conn.execute(
-                    "INSERT INTO reminders (sender, type, interval_minutes, remind_at) "
-                    "VALUES (?, ?, ?, ?)",
-                    (sender, "استغفار", mins, remind_at.strftime("%Y-%m-%d %H:%M:%S"))
-                )
+            at = datetime.now() + timedelta(minutes=mins)
+            conn = sqlite3.connect(REMINDERS_DB)
+            c = conn.cursor()
+            c.execute(
+                "INSERT INTO reminders (sender,type,interval_minutes,remind_at) VALUES (?,?,?,?)",
+                (sender, "استغفار", mins, at.strftime("%Y-%m-%d %H:%M:%S"))
+            )
+            conn.commit(); conn.close()
             set_session(sender, None)
             return {"reply": f"✅ تم ضبط تذكير استغفار كل {mins} دقيقة."}
-        return {"reply": "📌 اختر 1 أو 2 أو 3."}
+        return {"reply": "📌 1، 2 أو 3."}
 
-    # ——— افتراضي ———
     return {"reply": "🤖 أرسل 'منبه' لعرض القائمة أو 'توقف' لإلغاء التنبيهات."}
