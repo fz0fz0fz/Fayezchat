@@ -21,29 +21,31 @@ def index():
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json() or {}
-    sender  = (data.get("sender")  or "").strip()
-    message = (data.get("message") or "").strip()
+    sender = (data.get("from") or "").strip()
+    message = (data.get("body") or "").strip()
 
+    # ✅ طباعة لتشخيص أخطاء 400
     if not sender or not message:
-        return jsonify({"reply": "❗️ البيانات غير صحيحة."}), 400
+        logging.warning(f"🚨 بيانات غير صالحة في Webhook: {data}")
+        return jsonify({"error": "Invalid data", "received": data}), 400
 
+    # 1) لو في جلسة منبّه نشغّل منطق التذكير
     session = get_session(sender)
-    text = message.strip().lower()
-
-    # تمرير كل الرسائل الخاصة بالمنبه أو الجلسات إلى reminder.py
-    if (
-        session in {"reminder_menu", "oil_change_duration", "istighfar_interval"} or
-        text in {"20", "٢٠", "منبه", "منبّه", "تذكير", "00"}
-    ):
+    if session and session.startswith("reminder"):
         result = handle_reminder(message, sender)
         return jsonify(result)
 
-    # 0️⃣ رجوع للقائمة الرئيسية
-    if text in {"0", "رجوع", "عودة", "القائمة"}:
+    # 2) رجوع للقائمة الرئيسية
+    if message in ["0", "رجوع", "عودة", "القائمة"]:
         set_session(sender, None)
         return jsonify({"reply": MAIN_MENU_TEXT})
 
-    # ⚠️ رد افتراضي
+    # 3) دخول قائمة المنبّه
+    if message in ["20", "٢٠", "منبه", "منبّه", "تذكير"]:
+        result = handle_reminder(message, sender)
+        return jsonify(result)
+
+    # 4) افتراضي
     return jsonify({
         "reply": "👋 أهلاً! أرسل:\n0 للقائمة الرئيسية\n20 للمنبّه"
     })
