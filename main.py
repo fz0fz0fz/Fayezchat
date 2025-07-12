@@ -2,6 +2,7 @@ import logging
 import os
 from flask import Flask, request, jsonify
 from services.reminder import handle as handle_reminder, init_reminder_db
+from send_reminders import send_due_reminders  # استيراد دالة إرسال التذكيرات
 
 app = Flask(__name__)
 
@@ -52,6 +53,25 @@ def webhook():
     except Exception as e:
         logging.error(f"❌ Error processing request: {e}")
         return jsonify({"status": "error"}), 500
+
+# مسار لإرسال التذكيرات تلقائيًا (يتم استدعاؤه من Cron)
+@app.route("/send_reminders", methods=["GET", "POST"])
+def send_reminders_endpoint():
+    # تحقق بسيط من رمز أمان (يمكن تحسينه لاحقًا)
+    cron_token = request.args.get("token")
+    expected_token = os.getenv("CRON_TOKEN", "default_token")
+
+    if cron_token != expected_token:
+        logging.warning(f"🚨 محاولة وصول غير مصرح بها لـ /send_reminders")
+        return jsonify({"status": "unauthorized"}), 403
+
+    try:
+        result = send_due_reminders()
+        logging.info(f"📤 تم فحص التذكيرات وإرسالها: {result}")
+        return jsonify({"status": "success", "details": result}), 200
+    except Exception as e:
+        logging.error(f"❌ خطأ أثناء إرسال التذكيرات: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 # إرسال الرسائل عبر UltraMsg
 def send_whatsapp_message(to: str, body: str) -> bool:
