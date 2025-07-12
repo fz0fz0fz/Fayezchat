@@ -1,3 +1,5 @@
+# main.py
+
 import logging
 import os
 from flask import Flask, request, jsonify
@@ -20,34 +22,34 @@ def index():
 # ————————— Webhook —————————
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.get_json() or {}
+    payload = request.get_json(force=True) or {}
+
+    # استخراج البيانات من UltraMsg
+    data   = payload.get("data", {})
+    sender = (data.get("from")  or "").strip()
+    body   = (data.get("body")  or "").strip()
+
     logging.info("📥 البيانات المستلمة من UltraMsg: %s", data)
 
-    inner = data.get("data", {})
-    sender  = (inner.get("from")  or "").strip()
-    message = (inner.get("body") or "").strip()
-
-    if not sender or not message:
-        logging.warning("⚠️ البيانات ناقصة: sender=%s, message=%s", sender, message)
+    if not sender or not body:
+        logging.warning("⚠️ Webhook دون معلومات كافية: %s", payload)
         return jsonify({"reply": "❗️ البيانات غير صحيحة."}), 400
 
-    # 1) لو في جلسة منبّه نشغّل منطق التذكير
+    # 1) جلسة تابعة للمنبه
     session = get_session(sender)
     if session and session.startswith("reminder"):
-        result = handle_reminder(message, sender)
-        return jsonify(result)
+        return jsonify(handle_reminder(body, sender))
 
     # 2) رجوع للقائمة الرئيسية
-    if message in ["0", "رجوع", "عودة", "القائمة"]:
+    if body in ["0", "رجوع", "عودة", "القائمة"]:
         set_session(sender, None)
         return jsonify({"reply": MAIN_MENU_TEXT})
 
     # 3) دخول قائمة المنبّه
-    if message in ["20", "٢٠", "منبه", "منبّه", "تذكير"]:
-        result = handle_reminder(message, sender)
-        return jsonify(result)
+    if body in ["20", "٢٠", "منبه", "منبّه", "تذكير"]:
+        return jsonify(handle_reminder(body, sender))
 
-    # 4) افتراضي
+    # 4) رد افتراضي
     return jsonify({
         "reply": "👋 أهلاً! أرسل:\n0 للقائمة الرئيسية\n20 للمنبّه"
     })
