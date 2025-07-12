@@ -1,78 +1,48 @@
 import logging
-from flask import Flask, request
 import os
+import sqlite3
+from flask import Flask, request, jsonify
+from services.session import get_session, set_session
 from services.reminder import handle as handle_reminder
 
 app = Flask(__name__)
 
-# إعداد التسجيل
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+# ——————————————— Health-check ———————————————
+@app.route("/", methods=["GET"])
+def index():
+    return "OK", 200
 
-@app.route("/", methods=["POST"])
+# ——————————————— Webhook ———————————————
+@app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.json
-    logging.info(f"Received data: {data}")
+    data = request.get_json() or {}
 
-    message = data.get("message", "").strip()
-    sender = data.get("sender", "")
+    sender = (data.get("sender") or "").strip()
+    message = (data.get("message") or "").strip()
 
-    if not message or not sender:
-        return "Invalid data", 400
+    if not sender or not message:
+        return jsonify({"reply": "حدث خطأ في البيانات المستلمة."}), 400
 
-    if message == "0":
-        return send_main_menu(sender)
+    # إذا في جلسة منصة منبّه
+    session = get_session(sender)
+    if session and session.startswith("reminder"):
+        result = handle_reminder(message, sender)
+        return jsonify(result)
 
-    # استدعاء خدمة المنبه فقط
-    if handle_reminder(sender, message):
-        return "OK", 200
+    # الرجوع للقائمة الرئيسية
+    if message in ["0", "رجوع", "عودة", "القائمة"]:
+        from services.reminder import MAIN_MENU_TEXT
+        return jsonify({"reply": MAIN_MENU_TEXT})
 
-    return "No action taken", 200
+    # اختيار خدمة المنبّه
+    if message in ["20", "٢٠", "منبه", "تذكير", "منبّه"]:
+        result = handle_reminder(message, sender)
+        return jsonify(result)
 
-def send_main_menu(sender):
-    main_menu = """📝 *أهلا بك في دليل خدمات القرين*
-
-يمكنك الاستعلام عن الخدمات التالية:
-
-1️⃣ حكومي🏢  
-2️⃣ صيدلية💊  
-3️⃣ بقالة🥤  
-4️⃣ خضار🥬  
-5️⃣ رحلات⛺️  
-6️⃣ حلا🍮  
-7️⃣ أسر منتجة🥧  
-8️⃣ مطاعم🍔  
-9️⃣ قرطاسية📗  
-🔟 محلات 🏪
-11️⃣ شالية  
-12️⃣ وايت  
-13️⃣ شيول  
-14️⃣ دفان  
-15️⃣ مواد بناء وعوازل  
-16️⃣ عمال  
-17️⃣ محلات  
-18️⃣ ذبائح وملاحم  
-19️⃣ نقل مدرسي ومشاوير  
-20️⃣ منبه⏰
-"""
-    send_whatsapp_message(sender, main_menu)
-    return "Menu sent", 200
-
-def send_whatsapp_message(to, message):
-    import requests
-    ULTRAMSG_INSTANCE_ID = os.environ.get("ULTRAMSG_INSTANCE_ID", "instance130542")
-    ULTRAMSG_TOKEN = os.environ.get("ULTRAMSG_TOKEN", "pr2bhaor2vevcrts")
-    url = f"https://api.ultramsg.com/{ULTRAMSG_INSTANCE_ID}/messages/chat"
-    payload = {
-        "to": to,
-        "body": message
-    }
-    headers = {
-        "content-type": "application/json",
-        "DNT": "1",
-        "Authorization": f"Bearer {ULTRAMSG_TOKEN}"
-    }
-    response = requests.post(url, json=payload, headers=headers)
-    logging.info(f"Sent message to {to}, response: {response.text}")
+    # لو تحتاج الـ services الأخرى بالمستقبل،
+    # استدعائها هنا بنفس الأسلوب، وإلاّ رُدّ افتراضي:
+    return jsonify({"reply": "مرحبًا! أرسل رقم الخدمة أو اسمها للحصول على التفاصيل."})
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
