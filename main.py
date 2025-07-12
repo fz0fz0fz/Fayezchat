@@ -3,7 +3,6 @@ import os
 from flask import Flask, request, jsonify
 from services.session import get_session, set_session
 from services.reminder import handle as handle_reminder, MAIN_MENU_TEXT
-import requests
 
 app = Flask(__name__)
 
@@ -13,73 +12,41 @@ logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(message)s"
 )
 
-# معلومات UltraMsg
-ULTRAMSG_INSTANCE_ID = "instance130542"
-ULTRAMSG_TOKEN = "pr2bhaor2vevcrts"
-ULTRAMSG_API_URL = f"https://api.ultramsg.com/{ULTRAMSG_INSTANCE_ID}/messages/chat"
-
-# إرسال رد للواتساب
-def send_whatsapp_message(to, message):
-    payload = {
-        "token": ULTRAMSG_TOKEN,
-        "to": to,
-        "body": message
-    }
-    try:
-        res = requests.post(ULTRAMSG_API_URL, data=payload)
-        logging.info(f"📤 Message sent: {res.status_code} | {res.text}")
-    except Exception as e:
-        logging.error(f"❌ Failed to send message: {e}")
-
-# Health Check
+# ————————— Health-check —————————
 @app.route("/", methods=["GET"])
 def index():
     return "OK", 200
 
-# Webhook
+# ————————— Webhook —————————
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    try:
-        data = request.get_json(force=True) or {}
-        logging.info(f"📩 Received payload: {data}")
+    data = request.get_json() or {}
+    sender  = (data.get("sender")  or "").strip()
+    message = (data.get("message") or "").strip()
 
-        # استخراج البيانات من داخل "data"
-        payload_data = data.get("data", {})
-        sender = (payload_data.get("from") or "").strip()
-        message = (payload_data.get("body") or "").strip()
+    if not sender or not message:
+        return jsonify({"reply": "❗️ البيانات غير صحيحة."}), 400
 
-        if not sender or not message:
-            logging.warning("❗️ Missing sender or message in payload.")
-            return jsonify({"error": "Missing sender or message."}), 200
+    session = get_session(sender)
+    text = message.strip().lower()
 
-        session = get_session(sender)
+    # تمرير كل الرسائل الخاصة بالمنبه أو الجلسات إلى reminder.py
+    if (
+        session in {"reminder_menu", "oil_change_duration", "istighfar_interval"} or
+        text in {"20", "٢٠", "منبه", "منبّه", "تذكير", "00"}
+    ):
+        result = handle_reminder(message, sender)
+        return jsonify(result)
 
-        # 1) جلسة منبه نشطة
-        if session and session.startswith("reminder"):
-            result = handle_reminder(message, sender)
-            send_whatsapp_message(sender, result["reply"])
-            return jsonify({"status": "ok"})
+    # 0️⃣ رجوع للقائمة الرئيسية
+    if text in {"0", "رجوع", "عودة", "القائمة"}:
+        set_session(sender, None)
+        return jsonify({"reply": MAIN_MENU_TEXT})
 
-        # 2) رجوع للقائمة الرئيسية
-        if message in ["0", "رجوع", "عودة", "القائمة"]:
-            set_session(sender, None)
-            send_whatsapp_message(sender, MAIN_MENU_TEXT)
-            return jsonify({"status": "ok"})
-
-        # 3) دخول قائمة المنبّه
-        if message in ["20", "٢٠", "منبه", "منبّه", "تذكير"]:
-            result = handle_reminder(message, sender)
-            send_whatsapp_message(sender, result["reply"])
-            return jsonify({"status": "ok"})
-
-        # 4) رد افتراضي
-        reply = "👋 أهلاً! أرسل:\n0 للقائمة الرئيسية\n20 للمنبّه"
-        send_whatsapp_message(sender, reply)
-        return jsonify({"status": "ok"})
-
-    except Exception as e:
-        logging.exception("❌ Exception in webhook handler:")
-        return jsonify({"error": str(e)}), 200
+    # ⚠️ رد افتراضي
+    return jsonify({
+        "reply": "👋 أهلاً! أرسل:\n0 للقائمة الرئيسية\n20 للمنبّه"
+    })
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
