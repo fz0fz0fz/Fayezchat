@@ -192,7 +192,7 @@ def handle(msg: str, sender: str) -> dict:
     if text == "00":
         if session and "last_menu" in session:
             last_menu = session["last_menu"]
-            set_session(sender, {"menu": last_menu, "last_menu": "main"})
+            set_session(sender, {"menu": last_menu, "last_menu": session.get("menu", "main")})
             return handle(last_menu, sender)
         else:
             return {"reply": MAIN_MENU_TEXT}
@@ -417,7 +417,6 @@ def handle(msg: str, sender: str) -> dict:
         set_session(sender, {"menu": "reminder_main", "last_menu": "main"})
         return update_reminder(sender, reminder_id, remind_at=remind_at, message=message)
 
-    # التعامل مع أوامر حذف أو تعديل تذكير محدد
     if text.lower().startswith("حذف "):
         try:
             reminder_id = int(text.split()[1])
