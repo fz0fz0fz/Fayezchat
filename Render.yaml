@@ -1,6 +1,31 @@
+# render.yaml
 services:
   - type: web
     name: fayezchat
-    runtime: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn main:app
+    env: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn -w 4 -b 0.0.0.0:$PORT main:app"
+    envVars:
+      - key: ULTRAMSG_INSTANCE_ID
+        sync: false
+      - key: ULTRAMSG_TOKEN
+        sync: false
+      - key: PORT
+        value: 5000
+    autoDeploy: true
+
+  - type: cron
+    name: reminders-cron
+    env: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "echo 'Cron job for reminders'"
+    schedule: "*/5 * * * *" # كل 5 دقائق
+    envVars:
+      - key: ULTRAMSG_INSTANCE_ID
+        sync: false
+      - key: ULTRAMSG_TOKEN
+        sync: false
+    autoDeploy: true
+    command: "curl -s https://fayezchat.onrender.com/send_reminders"
