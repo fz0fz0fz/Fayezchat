@@ -43,14 +43,21 @@ def send_due_reminders():
             WHERE active = 1 AND remind_at <= ?
         """, (now,))
         reminders = c.fetchall()
+        
+        logging.info(f"🔍 Found {len(reminders)} due reminders at {now}")
+
+        if not reminders:
+            logging.info(f"✅ No due reminders found at {now}")
 
         for reminder_id, user_id, reminder_type, custom_message, remind_at, interval_days in reminders:
+            logging.info(f"📌 Processing reminder {reminder_id} for {user_id} at {remind_at} (Type: {reminder_type})")
             message = custom_message if custom_message else f"⏰ تذكير: {reminder_type} الآن."
             if reminder_type == "موعد" and not custom_message:
                 message = "🩺 تذكير: غدًا موعد زيارتك للمستشفى أو مناسبتك. نتمنى لك التوفيق! 🌿"
 
             # إرسال الرسالة عبر UltraMsg
             try:
+                logging.info(f"📤 Trying to send message to {user_id}: {message[:50]}...")
                 response = requests.post(API_URL, data={
                     "token": TOKEN,
                     "to": user_id,
