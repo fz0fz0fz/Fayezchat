@@ -38,7 +38,7 @@ def send_due_reminders():
 
         # جلب التذكيرات المستحقة (remind_at أقل من أو يساوي الوقت الحالي)
         c.execute("""
-            SELECT id, user_id, type, message, remind_at, interval_days
+            SELECT id, user_id, reminder_type, message, remind_at, interval_days
             FROM reminders
             WHERE active = 1 AND remind_at <= ?
         """, (now,))
