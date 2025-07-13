@@ -46,7 +46,7 @@ def send_due_reminders():
 
         for reminder_id, user_id, reminder_type, custom_message, remind_at, interval_days in reminders:
             message = custom_message if custom_message else f"⏰ تذكير: {reminder_type} الآن."
-            if reminder_type == "موعد":
+            if reminder_type == "موعد" and not custom_message:
                 message = "🩺 تذكير: غدًا موعد زيارتك للمستشفى أو مناسبتك. نتمنى لك التوفيق! 🌿"
 
             # إرسال الرسالة عبر UltraMsg
@@ -59,6 +59,12 @@ def send_due_reminders():
                 if response.status_code == 200:
                     sent_count += 1
                     logging.info(f"✅ تم إرسال تذكير لـ {user_id}: {reminder_type}")
+                    
+                    # تحديث إحصائيات التذكيرات المرسلة
+                    c.execute('''
+                        INSERT OR UPDATE INTO reminder_stats (user_id, reminders_sent)
+                        VALUES (?, COALESCE((SELECT reminders_sent FROM reminder_stats WHERE user_id = ?), 0) + 1)
+                    ''', (user_id, user_id))
                     
                     if interval_days > 0:
                         # إعادة جدولة التذكير التالي
