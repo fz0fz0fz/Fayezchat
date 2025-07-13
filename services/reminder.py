@@ -1,6 +1,7 @@
 # services/reminder.py
 import re
 import sqlite3
+import os
 from datetime import datetime, timedelta
 from typing import Dict, Optional
 from services.session import get_session, set_session
@@ -11,6 +12,8 @@ DB_PATH = "reminders.db"
 def init_reminder_db() -> None:
     """Initialize the database with necessary tables if not already created."""
     try:
+        # Ensure the directory exists if DB_PATH is in a subdirectory
+        os.makedirs(os.path.dirname(DB_PATH), exist_ok=True) if os.path.dirname(DB_PATH) else None
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute('''
@@ -32,7 +35,7 @@ def init_reminder_db() -> None:
             )
         ''')
         conn.commit()
-        print("✅ Database initialized successfully.")
+        print("✅ Database initialized successfully at", DB_PATH)
     except Exception as e:
         print(f"❌ Error initializing database: {e}")
     finally:
@@ -48,9 +51,11 @@ def save_reminder(user_id: str, reminder_type: str, message: Optional[str], remi
             VALUES (?, ?, ?, ?, ?, 1)
         ''', (user_id, reminder_type, message, remind_at, interval_days))
         conn.commit()
+        reminder_id = cursor.lastrowid
+        print(f"✅ Reminder saved successfully for user {user_id}, ID: {reminder_id}, Type: {reminder_type}, At: {remind_at}")
         return True
     except Exception as e:
-        print(f"❌ Error saving reminder: {e}")
+        print(f"❌ Error saving reminder for user {user_id}: {e}")
         return False
     finally:
         conn.close()
@@ -62,8 +67,10 @@ def delete_all_reminders(user_id: str) -> Dict[str, str]:
         cursor = conn.cursor()
         cursor.execute('DELETE FROM reminders WHERE user_id = ?', (user_id,))
         conn.commit()
+        print(f"✅ All reminders deleted for user {user_id}")
         return {"reply": "✅ تم حذف جميع التذكيرات الخاصة بك.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
     except Exception as e:
+        print(f"❌ Error deleting reminders for user {user_id}: {e}")
         return {"reply": f"❌ خطأ أثناء حذف التذكيرات: {str(e)}\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
     finally:
         conn.close()
@@ -76,10 +83,13 @@ def delete_reminder(user_id: str, reminder_id: int) -> Dict[str, str]:
         cursor.execute('DELETE FROM reminders WHERE user_id = ? AND id = ?', (user_id, reminder_id))
         conn.commit()
         if cursor.rowcount > 0:
+            print(f"✅ Reminder {reminder_id} deleted for user {user_id}")
             return {"reply": f"✅ تم حذف التذكير رقم {reminder_id} بنجاح.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
         else:
+            print(f"❌ Reminder {reminder_id} not found for user {user_id}")
             return {"reply": f"❌ التذكير رقم {reminder_id} غير موجود أو لا يخصك.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
     except Exception as e:
+        print(f"❌ Error deleting reminder {reminder_id} for user {user_id}: {e}")
         return {"reply": f"❌ خطأ أثناء حذف التذكير: {str(e)}\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
     finally:
         conn.close()
@@ -106,18 +116,21 @@ def update_reminder(user_id: str, reminder_id: int, remind_at: Optional[str] = N
             cursor.execute(query, values)
             conn.commit()
             if cursor.rowcount > 0:
+                print(f"✅ Reminder {reminder_id} updated for user {user_id}")
                 return {"reply": f"✅ تم تعديل التذكير رقم {reminder_id} بنجاح.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
             else:
+                print(f"❌ Reminder {reminder_id} not found for user {user_id}")
                 return {"reply": f"❌ التذكير رقم {reminder_id} غير موجود أو لا يخصك.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
         else:
             return {"reply": "❌ لم يتم تقديم أي بيانات للتعديل.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
     except Exception as e:
+        print(f"❌ Error updating reminder {reminder_id} for user {user_id}: {e}")
         return {"reply": f"❌ خطأ أثناء تعديل التذكير: {str(e)}\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
     finally:
         conn.close()
 
 def list_user_reminders(user_id: str, sender: str) -> Dict[str, str]:
-    """List all active reminders for a specific user."""
+    """List all active reminders for a specific user from the database."""
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -127,6 +140,7 @@ def list_user_reminders(user_id: str, sender: str) -> Dict[str, str]:
         if not rows:
             reply = "📭 لا توجد أي تنبيهات نشطة حاليًا.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"
             set_session(sender, {"menu": "reminder_main", "last_menu": "reminder_main"})
+            print(f"✅ No active reminders found for user {user_id}")
             return {"reply": reply}
 
         reply = "🔔 تنبيهاتك النشطة الحالية:\n\n"
@@ -136,10 +150,12 @@ def list_user_reminders(user_id: str, sender: str) -> Dict[str, str]:
         reply += "\n📌 خيارات:\n- أرسل 'حذف <رقم>' لحذف تذكير (مثل: حذف 1)\n- أرسل 'تعديل <رقم>' لتعديل تذكير (مثل: تعديل 2)\n"
         reply += "↩️ للرجوع (00) | 🏠 رئيسية (0)"
         set_session(sender, {"menu": "reminder_main", "last_menu": "reminder_main"})
+        print(f"✅ Listed {len(rows)} active reminders for user {user_id}")
         return {"reply": reply}
     except Exception as e:
         reply = f"❌ خطأ أثناء عرض التذكيرات: {str(e)}\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"
         set_session(sender, {"menu": "reminder_main", "last_menu": "reminder_main"})
+        print(f"❌ Error listing reminders for user {user_id}: {e}")
         return {"reply": reply}
     finally:
         conn.close()
@@ -158,10 +174,12 @@ def get_user_stats(user_id: str, sender: str) -> Dict[str, str]:
         reply = f"📊 *إحصائياتك الشخصية:*\n- التذكيرات النشطة: {active_count}\n- التذكيرات المرسلة: {sent_count}\n\n"
         reply += "↩️ للرجوع (00) | 🏠 رئيسية (0)"
         set_session(sender, {"menu": "reminder_main", "last_menu": "reminder_main"})
+        print(f"✅ Retrieved stats for user {user_id}: Active={active_count}, Sent={sent_count}")
         return {"reply": reply}
     except Exception as e:
         reply = f"❌ خطأ أثناء عرض الإحصائيات: {str(e)}\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"
         set_session(sender, {"menu": "reminder_main", "last_menu": "reminder_main"})
+        print(f"❌ Error retrieving stats for user {user_id}: {e}")
         return {"reply": reply}
     finally:
         conn.close()
@@ -217,6 +235,11 @@ def is_valid_time(time_text: str) -> Optional[Dict[str, int]]:
 
 def handle(msg: str, sender: str) -> Dict[str, str]:
     """Main handler for processing user input and managing conversation flow."""
+    # Initialize database on first interaction if needed
+    if not os.path.exists(DB_PATH):
+        print(f"⚠️ Database not found at {DB_PATH}. Initializing now...")
+        init_reminder_db()
+    
     text = msg.strip()
     session = get_session(sender) or {}
     current_menu = session.get("menu", "main")
