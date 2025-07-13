@@ -61,7 +61,7 @@ def delete_all_reminders(user_id):
         cursor = conn.cursor()
         cursor.execute('DELETE FROM reminders WHERE user_id = ?', (user_id,))
         conn.commit()
-        return {"reply": "✅ تم حذف جميع التذكيرات الخاصة بك.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)", "session_update": {"menu": "reminder_main", "last_menu": "main"}}
+        return {"reply": "✅ تم حذف جميع التذكيرات الخاصة بك.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
     except Exception as e:
         return {"reply": f"❌ خطأ أثناء حذف التذكيرات: {str(e)}\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
     finally:
@@ -75,7 +75,7 @@ def delete_reminder(user_id, reminder_id):
         cursor.execute('DELETE FROM reminders WHERE user_id = ? AND id = ?', (user_id, reminder_id))
         conn.commit()
         if cursor.rowcount > 0:
-            return {"reply": f"✅ تم حذف التذكير رقم {reminder_id} بنجاح.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)", "session_update": {"menu": "reminder_main", "last_menu": "main"}}
+            return {"reply": f"✅ تم حذف التذكير رقم {reminder_id} بنجاح.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
         else:
             return {"reply": f"❌ التذكير رقم {reminder_id} غير موجود أو لا يخصك.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
     except Exception as e:
@@ -105,18 +105,18 @@ def update_reminder(user_id, reminder_id, remind_at=None, message=None, interval
             cursor.execute(query, values)
             conn.commit()
             if cursor.rowcount > 0:
-                return {"reply": f"✅ تم تعديل التذكير رقم {reminder_id} بنجاح.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)", "session_update": {"menu": "reminder_main", "last_menu": "main"}}
+                return {"reply": f"✅ تم تعديل التذكير رقم {reminder_id} بنجاح.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
             else:
                 return {"reply": f"❌ التذكير رقم {reminder_id} غير موجود أو لا يخصك.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
         else:
-            return {"reply": "❌ لم يتم تقديم أي بيانات لالتعديل.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
+            return {"reply": "❌ لم يتم تقديم أي بيانات للتعديل.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
     except Exception as e:
         return {"reply": f"❌ خطأ أثناء تعديل التذكير: {str(e)}\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
     finally:
         conn.close()
 
 # ============ عرض تذكيرات المستخدم ============
-def list_user_reminders(user_id):
+def list_user_reminders(user_id, sender):
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -124,7 +124,9 @@ def list_user_reminders(user_id):
         rows = cursor.fetchall()
 
         if not rows:
-            return {"reply": "📭 لا توجد أي تنبيهات نشطة حاليًا.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)", "session_update": {"menu": "reminder_main", "last_menu": "main"}}
+            reply = "📭 لا توجد أي تنبيهات نشطة حاليًا.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"
+            set_session(sender, {"menu": "reminder_main", "last_menu": "reminder_main"})
+            return {"reply": reply}
 
         reply = "🔔 تنبيهاتك النشطة الحالية:\n\n"
         for row in rows:
@@ -132,14 +134,17 @@ def list_user_reminders(user_id):
             reply += f"{row[0]} - {row[1]}{interval_text} بتاريخ {row[2]}\n"
         reply += "\nاختر خيارًا:\n- أرسل 'حذف <رقم>' لحذف تذكير (مثل: حذف 1)\n- أرسل 'تعديل <رقم>' لتعديل تذكير (مثل: تعديل 2)\n"
         reply += "↩️ للرجوع (00) | 🏠 رئيسية (0)"
-        return {"reply": reply, "session_update": {"menu": "reminder_main", "last_menu": "main"}}
+        set_session(sender, {"menu": "reminder_main", "last_menu": "reminder_main"})
+        return {"reply": reply}
     except Exception as e:
-        return {"reply": f"❌ خطأ أثناء عرض التذكيرات: {str(e)}\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
+        reply = f"❌ خطأ أثناء عرض التذكيرات: {str(e)}\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"
+        set_session(sender, {"menu": "reminder_main", "last_menu": "reminder_main"})
+        return {"reply": reply}
     finally:
         conn.close()
 
 # ============ عرض إحصائيات المستخدم ============
-def get_user_stats(user_id):
+def get_user_stats(user_id, sender):
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -153,9 +158,12 @@ def get_user_stats(user_id):
         
         reply = f"📊 *إحصائياتك الشخصية:*\n- التذكيرات النشطة: {active_count}\n- التذكيرات المرسلة: {sent_count}\n\n"
         reply += "↩️ للرجوع (00) | 🏠 رئيسية (0)"
-        return {"reply": reply, "session_update": {"menu": "reminder_main", "last_menu": "main"}}
+        set_session(sender, {"menu": "reminder_main", "last_menu": "reminder_main"})
+        return {"reply": reply}
     except Exception as e:
-        return {"reply": f"❌ خطأ أثناء عرض الإحصائيات: {str(e)}\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
+        reply = f"❌ خطأ أثناء عرض الإحصائيات: {str(e)}\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"
+        set_session(sender, {"menu": "reminder_main", "last_menu": "reminder_main"})
+        return {"reply": reply}
     finally:
         conn.close()
 
@@ -194,7 +202,7 @@ def handle(msg: str, sender: str) -> dict:
         # الرجوع إلى القائمة السابقة بناءً على last_menu
         if session and "last_menu" in session:
             last_menu = session.get("last_menu", "main")
-            if last_menu == "main":
+            if last_menu == "main" or last_menu == "":
                 set_session(sender, None)
                 return {"reply": MAIN_MENU_TEXT}
             elif last_menu == "reminder_main":
@@ -289,8 +297,7 @@ def handle(msg: str, sender: str) -> dict:
 
     if text.lower() == "حذف":
         result = delete_all_reminders(sender)
-        if "session_update" in result:
-            set_session(sender, result["session_update"])
+        set_session(sender, {"menu": "reminder_main", "last_menu": "main"})
         return result
 
     # إذا لم تكن هناك جلسة (أي في القائمة الرئيسية)
@@ -315,7 +322,9 @@ def handle(msg: str, sender: str) -> dict:
         else:
             return {"reply": MAIN_MENU_TEXT}
 
-    if session.get("menu") == "reminder_main":
+    current_menu = session.get("menu", "reminder_main")
+
+    if current_menu == "reminder_main":
         if text == "1":
             set_session(sender, {"menu": "reminder_date", "last_menu": "reminder_main", "reminder_type": "موعد", "interval_days": 0})
             return {
@@ -345,19 +354,16 @@ def handle(msg: str, sender: str) -> dict:
                 )
             }
         elif text == "4":
-            result = list_user_reminders(sender)
-            if "session_update" in result:
-                set_session(sender, result["session_update"])
+            result = list_user_reminders(sender, sender)
             return {"reply": result["reply"]}
         elif text == "5":
-            result = get_user_stats(sender)
-            if "session_update" in result:
-                set_session(sender, result["session_update"])
+            result = get_user_stats(sender, sender)
             return {"reply": result["reply"]}
         else:
-            return {"reply": "↩️ اختر رقم صحيح أو أرسل 'حذف' لإزالة جميع التنبيهات."}
+            set_session(sender, {"menu": "reminder_main", "last_menu": "main"})
+            return {"reply": "↩️ اختر رقم صحيح أو أرسل 'حذف' لإزالة جميع التنبيهات.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
 
-    if session.get("menu") == "reminder_date":
+    elif current_menu == "reminder_date":
         try:
             parts = [int(p) for p in re.split(r"[-./_\\\s]+", text.strip()) if p]
             if len(parts) == 3:
@@ -387,7 +393,7 @@ def handle(msg: str, sender: str) -> dict:
                 )
             }
 
-    if session.get("menu") == "reminder_time":
+    elif current_menu == "reminder_time":
         try:
             if text.lower() in ["تخطي", "skip"]:
                 hour, minute = 0, 0
@@ -420,7 +426,7 @@ def handle(msg: str, sender: str) -> dict:
                 )
             }
 
-    if session.get("menu") == "reminder_message":
+    elif current_menu == "reminder_message":
         reminder_type = session.get("reminder_type", "موعد")
         interval_days = session.get("interval_days", 0)
         date_str = session.get("date", "2023-01-01")
@@ -442,7 +448,7 @@ def handle(msg: str, sender: str) -> dict:
                 "reply": f"❌ حدث خطأ أثناء ضبط التذكير. حاول مرة أخرى.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"
             }
 
-    if session.get("menu") == "reminder_edit":
+    elif current_menu == "reminder_edit":
         reminder_id = session.get("reminder_id")
         if text.lower() in ["تخطي", "skip"]:
             set_session(sender, {"menu": "reminder_main", "last_menu": "main"})
@@ -476,7 +482,7 @@ def handle(msg: str, sender: str) -> dict:
                 )
             }
 
-    if session.get("menu") == "reminder_edit_time":
+    elif current_menu == "reminder_edit_time":
         reminder_id = session.get("reminder_id")
         date_str = session.get("date")
         if text.lower() in ["تخطي", "skip"]:
@@ -510,7 +516,7 @@ def handle(msg: str, sender: str) -> dict:
             )
         }
 
-    if session.get("menu") == "reminder_edit_message":
+    elif current_menu == "reminder_edit_message":
         reminder_id = session.get("reminder_id")
         remind_at = session.get("remind_at") if session.get("remind_at") else None
         message = None if text.lower() in ["تخطي", "skip"] else text
@@ -522,10 +528,10 @@ def handle(msg: str, sender: str) -> dict:
         try:
             reminder_id = int(text.split()[1])
             result = delete_reminder(sender, reminder_id)
-            if "session_update" in result:
-                set_session(sender, result["session_update"])
+            set_session(sender, {"menu": "reminder_main", "last_menu": "main"})
             return result
         except (IndexError, ValueError):
+            set_session(sender, {"menu": "reminder_main", "last_menu": "main"})
             return {"reply": "❌ صيغة غير صحيحة. أرسل 'حذف <رقم>' مثل: حذف 1\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
 
     if text.lower().startswith("تعديل "):
@@ -544,6 +550,9 @@ def handle(msg: str, sender: str) -> dict:
                 )
             }
         except (IndexError, ValueError):
+            set_session(sender, {"menu": "reminder_main", "last_menu": "main"})
             return {"reply": "❌ صيغة غير صحيحة. أرسل 'تعديل <رقم>' مثل: تعديل 2\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
 
+    # إذا لم يتم التعرف على المدخلات، إعادة تعيين الجلسة كاحتياط
+    set_session(sender, None)
     return {"reply": MAIN_MENU_TEXT}
