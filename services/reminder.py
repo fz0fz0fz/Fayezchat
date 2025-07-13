@@ -3,6 +3,7 @@ import re
 import sqlite3
 from datetime import datetime, timedelta
 from services.session import get_session, set_session
+from services.db import get_categories  # استيراد دالة جلب الفئات
 
 DB_PATH = "reminders.db"
 
@@ -95,7 +96,8 @@ MAIN_MENU_TEXT = (
     "*أهلاً بك في دليل خدمات القرين*\n"
     "يمكنك الاستعلام عن الخدمات التالية:\n\n"
     "1️⃣ حكومي🏢\n"
-    "2️⃣ منبه 📆"
+    "2️⃣ منبه 📆\n"
+    "3️⃣ صيدليات 💊"
 )
 
 # ============ المعالجة الرئيسية ============
@@ -122,6 +124,20 @@ def handle(msg: str, sender: str) -> dict:
         if text == "2":
             set_session(sender, {"menu": "reminder_main", "last_menu": "main"})
             return {"reply": REMINDER_MENU_TEXT}
+        elif text == "3":
+            categories = get_categories()
+            if not categories:
+                return {"reply": "❌ لا توجد بيانات متاحة عن الصيدليات حاليًا.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
+            
+            reply = "💊 *قائمة الصيدليات:*\n\n"
+            for category in categories:
+                code, name, description, morning_start, morning_end, evening_start, evening_end = category
+                reply += f"🏢 *{name}*\n"
+                reply += f"{description}\n"
+                reply += f"⏰ *دوام الصباح*: {morning_start} - {morning_end}\n"
+                reply += f"⏰ *دوام المساء*: {evening_start} - {evening_end}\n\n"
+            reply += "↩️ للرجوع (00) | 🏠 رئيسية (0)"
+            return {"reply": reply}
         else:
             return {"reply": MAIN_MENU_TEXT}
 
