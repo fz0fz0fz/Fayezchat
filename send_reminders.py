@@ -48,47 +48,64 @@ def send_due_reminders():
 
         if not reminders:
             logging.info(f"✅ No due reminders found at {now}")
+        else:
+            for reminder in reminders:
+                reminder_id, user_id, reminder_type, custom_message, remind_at_str, interval_days = reminder
+                logging.info(f"📌 Processing reminder {reminder_id} for {user_id} at {remind_at_str} (Type: {reminder_type})")
+                
+                # تحقق من تنسيق الوقت
+                try:
+                    remind_at = datetime.strptime(remind_at_str, "%Y-%m-%d %H:%M:%S")
+                    logging.info(f"🕒 Reminder time {remind_at_str} is valid")
+                except ValueError:
+                    logging.error(f"❌ Invalid time format for reminder {reminder_id}: {remind_at_str}")
+                    errors.append(f"Invalid time format for reminder {reminder_id}")
+                    continue  # تجاهل التذكير إذا كان تنسيق الوقت غير صحيح
+                
+                message = custom_message if custom_message else f"⏰ تذكير: {reminder_type} الآن."
+                if reminder_type == "موعد" and not custom_message:
+                    message = "🩺 تذكير: غدًا موعد زيارتك للمستشفى أو مناسبتك. نتمنى لك التوفيق! 🌿"
 
-        for reminder_id, user_id, reminder_type, custom_message, remind_at, interval_days in reminders:
-            logging.info(f"📌 Processing reminder {reminder_id} for {user_id} at {remind_at} (Type: {reminder_type})")
-            message = custom_message if custom_message else f"⏰ تذكير: {reminder_type} الآن."
-            if reminder_type == "موعد" and not custom_message:
-                message = "🩺 تذكير: غدًا موعد زيارتك للمستشفى أو مناسبتك. نتمنى لك التوفيق! 🌿"
+                # التحقق من تنسيق user_id (يمكن تعديله حسب الحاجة)
+                if not user_id.startswith('+') and '@' not in user_id:
+                    logging.error(f"❌ Invalid user_id format for reminder {reminder_id}: {user_id}")
+                    errors.append(f"Invalid user_id format for reminder {reminder_id}")
+                    continue  # تجاهل التذكير إذا كان تنسيق user_id غير صحيح
 
-            # إرسال الرسالة عبر UltraMsg
-            try:
-                logging.info(f"📤 Trying to send message to {user_id}: {message[:50]}...")
-                response = requests.post(API_URL, data={
-                    "token": TOKEN,
-                    "to": user_id,
-                    "body": message
-                }, timeout=10)
-                if response.status_code == 200:
-                    sent_count += 1
-                    logging.info(f"✅ تم إرسال تذكير لـ {user_id}: {reminder_type}")
-                    
-                    # تحديث إحصائيات التذكيرات المرسلة
-                    c.execute('''
-                        INSERT OR UPDATE INTO reminder_stats (user_id, reminders_sent)
-                        VALUES (?, COALESCE((SELECT reminders_sent FROM reminder_stats WHERE user_id = ?), 0) + 1)
-                    ''', (user_id, user_id))
-                    
-                    if interval_days > 0:
-                        # إعادة جدولة التذكير التالي
-                        next_time = datetime.strptime(remind_at, "%Y-%m-%d %H:%M:%S") + timedelta(days=interval_days)
-                        c.execute("UPDATE reminders SET remind_at = ? WHERE id = ?", 
-                                  (next_time.strftime("%Y-%m-%d %H:%M:%S"), reminder_id))
-                        logging.info(f"🔁 إعادة جدولة {reminder_type} لـ {user_id} بعد {interval_days} يوم/أيام.")
+                # إرسال الرسالة عبر UltraMsg
+                try:
+                    logging.info(f"📤 Trying to send message to {user_id}: {message[:50]}...")
+                    response = requests.post(API_URL, data={
+                        "token": TOKEN,
+                        "to": user_id,
+                        "body": message
+                    }, timeout=10)
+                    if response.status_code == 200:
+                        sent_count += 1
+                        logging.info(f"✅ تم إرسال تذكير لـ {user_id}: {reminder_type}")
+                        
+                        # تحديث إحصائيات التذكيرات المرسلة
+                        c.execute('''
+                            INSERT OR UPDATE INTO reminder_stats (user_id, reminders_sent)
+                            VALUES (?, COALESCE((SELECT reminders_sent FROM reminder_stats WHERE user_id = ?), 0) + 1)
+                        ''', (user_id, user_id))
+                        
+                        if interval_days > 0:
+                            # إعادة جدولة التذكير التالي
+                            next_time = remind_at + timedelta(days=interval_days)
+                            c.execute("UPDATE reminders SET remind_at = ? WHERE id = ?", 
+                                      (next_time.strftime("%Y-%m-%d %H:%M:%S"), reminder_id))
+                            logging.info(f"🔁 إعادة جدولة {reminder_type} لـ {user_id} بعد {interval_days} يوم/أيام.")
+                        else:
+                            # إيقاف التذكير إذا كان لمرة واحدة
+                            c.execute("UPDATE reminders SET active = 0 WHERE id = ?", (reminder_id,))
+                            logging.info(f"✅ تم إرسال تذكير لمرة واحدة لـ {user_id}: {reminder_type}")
                     else:
-                        # إيقاف التذكير إذا كان لمرة واحدة
-                        c.execute("UPDATE reminders SET active = 0 WHERE id = ?", (reminder_id,))
-                        logging.info(f"✅ تم إرسال تذكير لمرة واحدة لـ {user_id}: {reminder_type}")
-                else:
-                    errors.append(f"Failed to send to {user_id}: {response.text}")
-                    logging.error(f"❌ فشل إرسال تذكير لـ {user_id}: {response.text}")
-            except Exception as e:
-                errors.append(f"Error sending to {user_id}: {str(e)}")
-                logging.error(f"❌ خطأ أثناء إرسال تذكير لـ {user_id}: {e}")
+                        errors.append(f"Failed to send to {user_id}: {response.text}")
+                        logging.error(f"❌ فشل إرسال تذكير لـ {user_id}: {response.text}")
+                except Exception as e:
+                    errors.append(f"Error sending to {user_id}: {str(e)}")
+                    logging.error(f"❌ خطأ أثناء إرسال تذكير لـ {user_id}: {e}")
 
         conn.commit()
     except Exception as e:
