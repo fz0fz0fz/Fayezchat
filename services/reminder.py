@@ -186,21 +186,112 @@ def handle(msg: str, sender: str) -> dict:
     text = msg.strip()
 
     if text == "0":
+        # إعادة تعيين الجلسة بالكامل عند اختيار العودة إلى القائمة الرئيسية
         set_session(sender, None)
         return {"reply": MAIN_MENU_TEXT}
 
     if text == "00":
+        # الرجوع إلى القائمة السابقة بناءً على last_menu
         if session and "last_menu" in session:
-            last_menu = session["last_menu"]
-            set_session(sender, {"menu": last_menu, "last_menu": session.get("menu", "main")})
-            return handle(last_menu, sender)
+            last_menu = session.get("last_menu", "main")
+            if last_menu == "main":
+                set_session(sender, None)
+                return {"reply": MAIN_MENU_TEXT}
+            elif last_menu == "reminder_main":
+                set_session(sender, {"menu": "reminder_main", "last_menu": "main"})
+                return {"reply": REMINDER_MENU_TEXT}
+            elif last_menu == "reminder_date":
+                set_session(sender, {
+                    "menu": "reminder_date",
+                    "last_menu": "reminder_main",
+                    "reminder_type": session.get("reminder_type", "موعد"),
+                    "interval_days": session.get("interval_days", 0)
+                })
+                return {
+                    "reply": (
+                        "📅 أرسل تاريخ التذكير بالميلادي:\n"
+                        "مثل: 17-08-2025\n\n"
+                        "↩️ للرجوع (00) | 🏠 رئيسية (0)"
+                    )
+                }
+            elif last_menu == "reminder_time":
+                set_session(sender, {
+                    "menu": "reminder_time",
+                    "last_menu": "reminder_date",
+                    "reminder_type": session.get("reminder_type", "موعد"),
+                    "interval_days": session.get("interval_days", 0),
+                    "date": session.get("date", "2023-01-01")
+                })
+                return {
+                    "reply": (
+                        "⏰ أدخل وقت التذكير بالصيغة HH:MM (24 ساعة):\n"
+                        "مثل: 15:30\n\n"
+                        "↩️ للرجوع (00) | 🏠 رئيسية (0)"
+                    )
+                }
+            elif last_menu == "reminder_message":
+                set_session(sender, {
+                    "menu": "reminder_message",
+                    "last_menu": "reminder_time",
+                    "reminder_type": session.get("reminder_type", "موعد"),
+                    "interval_days": session.get("interval_days", 0),
+                    "date": session.get("date", "2023-01-01"),
+                    "time": session.get("time", "00:00")
+                })
+                return {
+                    "reply": (
+                        "📝 أدخل رسالة مخصصة للتذكير (اختياري، أرسل 'تخطي' إذا لا تريد):\n"
+                        "مثل: لا تنسَ زيارة الطبيب\n\n"
+                        "↩️ للرجوع (00) | 🏠 رئيسية (0)"
+                    )
+                }
+            elif "reminder_edit" in last_menu:
+                set_session(sender, {
+                    "menu": last_menu,
+                    "last_menu": "reminder_main",
+                    "reminder_id": session.get("reminder_id", None),
+                    "date": session.get("date", "2023-01-01") if "date" in session else "2023-01-01",
+                    "time": session.get("time", "00:00") if "time" in session else "00:00",
+                    "remind_at": session.get("remind_at", "") if "remind_at" in session else ""
+                })
+                if last_menu == "reminder_edit":
+                    return {
+                        "reply": (
+                            "📅 أدخل تاريخ جديد للتذكير بالميلادي (أو 'تخطي' للاحتفاظ بالتاريخ الحالي):\n"
+                            "مثل: 17-08-2025\n\n"
+                            "↩️ للرجوع (00) | 🏠 رئيسية (0)"
+                        )
+                    }
+                elif last_menu == "reminder_edit_time":
+                    return {
+                        "reply": (
+                            "⏰ أدخل وقت التذكير الجديد بالصيغة HH:MM (24 ساعة):\n"
+                            "مثل: 15:30 أو أرسل 'تخطي' للاحتفاظ بالوقت الحالي\n\n"
+                            "↩️ للرجوع (00) | 🏠 رئيسية (0)"
+                        )
+                    }
+                elif last_menu == "reminder_edit_message":
+                    return {
+                        "reply": (
+                            "📝 أدخل رسالة مخصصة جديدة للتذكير (اختياري، أرسل 'تخطي' للاحتفاظ بالرسالة الحالية):\n"
+                            "مثل: لا تنسَ زيارة الطبيب\n\n"
+                            "↩️ للرجوع (00) | 🏠 رئيسية (0)"
+                        )
+                    }
+            else:
+                # إذا لم تكن القائمة السابقة معروفة، نعود إلى القائمة الرئيسية
+                set_session(sender, None)
+                return {"reply": MAIN_MENU_TEXT}
         else:
+            # إذا لم تكن هناك جلسة أو last_menu، نعود إلى القائمة الرئيسية
+            set_session(sender, None)
             return {"reply": MAIN_MENU_TEXT}
 
     if text.lower() == "حذف":
         return delete_all_reminders(sender)
 
-    if session is None:
+    # إذا لم تكن هناك جلسة (أي في القائمة الرئيسية)
+    if session is None or not session:
         if text == "2":
             set_session(sender, {"menu": "reminder_main", "last_menu": "main"})
             return {"reply": REMINDER_MENU_TEXT}
@@ -417,6 +508,7 @@ def handle(msg: str, sender: str) -> dict:
         set_session(sender, {"menu": "reminder_main", "last_menu": "main"})
         return update_reminder(sender, reminder_id, remind_at=remind_at, message=message)
 
+    # التعامل مع أوامر حذف أو تعديل تذكير محدد
     if text.lower().startswith("حذف "):
         try:
             reminder_id = int(text.split()[1])
