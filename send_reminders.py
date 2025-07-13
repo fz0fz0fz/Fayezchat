@@ -28,7 +28,12 @@ def send_due_reminders():
     if not API_URL:
         return {"sent_count": 0, "error": "UltraMsg credentials not set."}
 
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # الحصول على الوقت الحالي بتوقيت UTC وإضافة 3 ساعات (UTC+3)
+    now_utc = datetime.utcnow()  # الوقت بتوقيت UTC
+    now = (now_utc + timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")  # ضبط إلى UTC+3 (مثل توقيت السعودية)
+    logging.info(f"🕒 Current time adjusted to UTC+3: {now}")
+    logging.info(f"🕒 UTC time for reference: {now_utc.strftime('%Y-%m-%d %H:%M:%S')}")
+    
     sent_count = 0
     errors = []
 
@@ -36,7 +41,7 @@ def send_due_reminders():
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
 
-        # جلب التذكيرات المستحقة (remind_at أقل من أو يساوي الوقت الحالي)
+        # جلب التذكيرات المستحقة (remind_at أقل من أو يساوي الوقت الحالي المُعدل)
         c.execute("""
             SELECT id, user_id, reminder_type, message, remind_at, interval_days
             FROM reminders
@@ -48,6 +53,12 @@ def send_due_reminders():
 
         if not reminders:
             logging.info(f"✅ No due reminders found at {now}")
+            # للتحقق من التذكيرات القادمة (للتأكد من أنها موجودة)
+            c.execute("SELECT id, user_id, reminder_type, remind_at FROM reminders WHERE active = 1")
+            all_reminders = c.fetchall()
+            logging.info(f"📋 Total active reminders in database: {len(all_reminders)}")
+            for reminder in all_reminders:
+                logging.info(f"📅 Active reminder {reminder[0]} for {reminder[1]} at {reminder[3]} (Type: {reminder[2]})")
         else:
             for reminder in reminders:
                 reminder_id, user_id, reminder_type, custom_message, remind_at_str, interval_days = reminder
