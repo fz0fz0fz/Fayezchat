@@ -1,7 +1,7 @@
 # send_reminders.py
 import sqlite3
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 import logging
 
@@ -28,7 +28,7 @@ def send_due_reminders():
     if not API_URL:
         return {"sent_count": 0, "error": "UltraMsg credentials not set."}
 
-    now = datetime.now().strftime("%Y-%m-%d")
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     sent_count = 0
     errors = []
 
@@ -36,15 +36,15 @@ def send_due_reminders():
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
 
-        # جلب التذكيرات المستحقة (remind_at أقل من أو يساوي التاريخ الحالي)
+        # جلب التذكيرات المستحقة (remind_at أقل من أو يساوي الوقت الحالي)
         c.execute("""
-            SELECT id, user_id, type, message, remind_at
+            SELECT id, user_id, type, message, remind_at, interval_days
             FROM reminders
-            WHERE remind_at <= ?
+            WHERE active = 1 AND remind_at <= ?
         """, (now,))
         reminders = c.fetchall()
 
-        for reminder_id, user_id, reminder_type, custom_message, remind_at in reminders:
+        for reminder_id, user_id, reminder_type, custom_message, remind_at, interval_days in reminders:
             message = custom_message if custom_message else f"⏰ تذكير: {reminder_type} الآن."
             if reminder_type == "موعد":
                 message = "🩺 تذكير: غدًا موعد زيارتك للمستشفى أو مناسبتك. نتمنى لك التوفيق! 🌿"
@@ -59,8 +59,17 @@ def send_due_reminders():
                 if response.status_code == 200:
                     sent_count += 1
                     logging.info(f"✅ تم إرسال تذكير لـ {user_id}: {reminder_type}")
-                    # حذف التذكير بعد الإرسال (لأنه لمرة واحدة)
-                    c.execute("DELETE FROM reminders WHERE id = ?", (reminder_id,))
+                    
+                    if interval_days > 0:
+                        # إعادة جدولة التذكير التالي
+                        next_time = datetime.strptime(remind_at, "%Y-%m-%d %H:%M:%S") + timedelta(days=interval_days)
+                        c.execute("UPDATE reminders SET remind_at = ? WHERE id = ?", 
+                                  (next_time.strftime("%Y-%m-%d %H:%M:%S"), reminder_id))
+                        logging.info(f"🔁 إعادة جدولة {reminder_type} لـ {user_id} بعد {interval_days} يوم/أيام.")
+                    else:
+                        # إيقاف التذكير إذا كان لمرة واحدة
+                        c.execute("UPDATE reminders SET active = 0 WHERE id = ?", (reminder_id,))
+                        logging.info(f"✅ تم إرسال تذكير لمرة واحدة لـ {user_id}: {reminder_type}")
                 else:
                     errors.append(f"Failed to send to {user_id}: {response.text}")
                     logging.error(f"❌ فشل إرسال تذكير لـ {user_id}: {response.text}")
