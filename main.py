@@ -57,14 +57,6 @@ def webhook():
 # مسار لإرسال التذكيرات تلقائيًا (يتم استدعاؤه من Cron)
 @app.route("/send_reminders", methods=["GET", "POST"])
 def send_reminders_endpoint():
-    # تحقق بسيط من رمز أمان (يمكن تحسينه لاحقًا)
-    cron_token = request.args.get("token")
-    expected_token = os.getenv("CRON_TOKEN", "default_token")
-
-    if cron_token != expected_token:
-        logging.warning(f"🚨 محاولة وصول غير مصرح بها لـ /send_reminders")
-        return jsonify({"status": "unauthorized"}), 403
-
     try:
         result = send_due_reminders()
         logging.info(f"📤 تم فحص التذكيرات وإرسالها: {result}")
