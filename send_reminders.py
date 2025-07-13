@@ -95,22 +95,38 @@ def send_due_reminders():
                         sent_count += 1
                         logging.info(f"✅ تم إرسال تذكير لـ {user_id}: {reminder_type}")
                         
-                        # تحديث إحصائيات التذكيرات المرسلة
-                        c.execute('''
-                            INSERT OR UPDATE INTO reminder_stats (user_id, reminders_sent)
-                            VALUES (?, COALESCE((SELECT reminders_sent FROM reminder_stats WHERE user_id = ?), 0) + 1)
-                        ''', (user_id, user_id))
+                        # تحديث إحصائيات التذكيرات المرسلة (باستخدام INSERT ... ON CONFLICT)
+                        try:
+                            c.execute('''
+                                INSERT INTO reminder_stats (user_id, reminders_sent)
+                                VALUES (?, 1)
+                                ON CONFLICT(user_id) DO UPDATE SET reminders_sent = reminders_sent + 1
+                            ''', (user_id,))
+                            logging.info(f"📊 Updated stats for {user_id}")
+                        except Exception as e:
+                            logging.error(f"❌ Error updating stats for {user_id}: {str(e)}")
+                            errors.append(f"Error updating stats for {user_id}: {str(e)}")
                         
                         if interval_days > 0:
                             # إعادة جدولة التذكير التالي
-                            next_time = remind_at + timedelta(days=interval_days)
-                            c.execute("UPDATE reminders SET remind_at = ? WHERE id = ?", 
-                                      (next_time.strftime("%Y-%m-%d %H:%M:%S"), reminder_id))
-                            logging.info(f"🔁 إعادة جدولة {reminder_type} لـ {user_id} بعد {interval_days} يوم/أيام.")
+                            try:
+                                next_time = remind_at + timedelta(days=interval_days)
+                                c.execute("UPDATE reminders SET remind_at = ? WHERE id = ?", 
+                                          (next_time.strftime("%Y-%m-%d %H:%M:%S"), reminder_id))
+                                conn.commit()  # التأكد من Commit بعد كل عملية UPDATE
+                                logging.info(f"🔁 إعادة جدولة {reminder_type} لـ {user_id} بعد {interval_days} يوم/أيام إلى {next_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                            except Exception as e:
+                                logging.error(f"❌ Error rescheduling reminder {reminder_id}: {str(e)}")
+                                errors.append(f"Error rescheduling reminder {reminder_id}: {str(e)}")
                         else:
                             # إيقاف التذكير إذا كان لمرة واحدة
-                            c.execute("UPDATE reminders SET active = 0 WHERE id = ?", (reminder_id,))
-                            logging.info(f"✅ تم إرسال تذكير لمرة واحدة لـ {user_id}: {reminder_type}")
+                            try:
+                                c.execute("UPDATE reminders SET active = 0 WHERE id = ?", (reminder_id,))
+                                conn.commit()  # التأكد من Commit بعد كل عملية UPDATE
+                                logging.info(f"✅ تم إرسال تذكير لمرة واحدة لـ {user_id}: {reminder_type}")
+                            except Exception as e:
+                                logging.error(f"❌ Error deactivating reminder {reminder_id}: {str(e)}")
+                                errors.append(f"Error deactivating reminder {reminder_id}: {str(e)}")
                     else:
                         errors.append(f"Failed to send to {user_id}: {response.text}")
                         logging.error(f"❌ فشل إرسال تذكير لـ {user_id}: {response.text}")
