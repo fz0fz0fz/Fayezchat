@@ -30,7 +30,8 @@ def send_due_reminders():
 
     # الحصول على الوقت الحالي بتوقيت UTC وإضافة 3 ساعات (UTC+3)
     now_utc = datetime.utcnow()  # الوقت بتوقيت UTC
-    now = (now_utc + timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")  # ضبط إلى UTC+3 (مثل توقيت السعودية)
+    now_dt = now_utc + timedelta(hours=3)  # ضبط إلى UTC+3 (مثل توقيت السعودية)
+    now = now_dt.strftime("%Y-%m-%d %H:%M:%S")
     logging.info(f"🕒 Current time adjusted to UTC+3: {now}")
     logging.info(f"🕒 UTC time for reference: {now_utc.strftime('%Y-%m-%d %H:%M:%S')}")
     
@@ -71,7 +72,7 @@ def send_due_reminders():
                 except ValueError:
                     logging.error(f"❌ Invalid time format for reminder {reminder_id}: {remind_at_str}")
                     errors.append(f"Invalid time format for reminder {reminder_id}")
-                    continue  # تجاهل التذكير إذا كان تنسيق الوقت غير صحيح
+                    continue  # تجاهل التذكير إذا كان تنسيق الوقت غير Sahih
                 
                 message = custom_message if custom_message else f"⏰ تذكير: {reminder_type} الآن."
                 if reminder_type == "موعد" and not custom_message:
