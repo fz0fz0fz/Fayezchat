@@ -165,4 +165,5 @@ def send_due_reminders():
 if __name__ == "__main__":
     result = send_due_reminders()
     print(f"📤 عدد التذكيرات المرسلة: {result['sent_count']}")
-    if result.get("errors")
+    if result.get("errors") != "No errors":
+        print(f"⚠️ الأخطاء: {result['errors']}")
