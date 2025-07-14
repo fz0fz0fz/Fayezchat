@@ -38,7 +38,7 @@ def send_due_reminders():
     
     sent_count = 0
     errors = []
-    processed_reminders = set()  # لتتبع التذكيرات التي تم معالجتها في هذه الجلسة
+    processed_reminders = set()  # لتتبع التذكيرات التي تم معalجتها في هذه الجلسة
 
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -56,12 +56,12 @@ def send_due_reminders():
 
         if not reminders:
             logging.info(f"✅ No due reminders found at {now}")
-            # للتحقق من التذكيرات القادمة (للتأكد من أنها موجودة)
-            c.execute("SELECT id, user_id, reminder_type, remind_at FROM reminders WHERE active = 1")
+            # للتحقق من التذكيرات النشطة الموجودة في قاعدة البيانات
+            c.execute("SELECT id, user_id, reminder_type, remind_at, interval_days FROM reminders WHERE active = 1")
             all_reminders = c.fetchall()
             logging.info(f"📋 Total active reminders in database: {len(all_reminders)}")
             for reminder in all_reminders:
-                logging.info(f"📅 Active reminder {reminder[0]} for {reminder[1]} at {reminder[3]} (Type: {reminder[2]})")
+                logging.info(f"📅 Active reminder {reminder[0]} for {reminder[1]} at {reminder[3]} (Type: {reminder[2]}, Interval: {reminder[4]} days)")
         else:
             for reminder in reminders:
                 reminder_id, user_id, reminder_type, custom_message, remind_at_str, interval_days = reminder
@@ -71,7 +71,7 @@ def send_due_reminders():
                     logging.info(f"⚠️ Skipping already processed reminder {reminder_id} for {user_id}")
                     continue
                 
-                logging.info(f"📌 Processing reminder {reminder_id} for {user_id} at {remind_at_str} (Type: {reminder_type})")
+                logging.info(f"📌 Processing reminder {reminder_id} for {user_id} at {remind_at_str} (Type: {reminder_type}, Interval: {interval_days} days)")
                 
                 # تحقق من تنسيق الوقت
                 try:
@@ -131,8 +131,9 @@ def send_due_reminders():
                         logging.error(f"❌ Error updating stats for {user_id}: {str(e)}")
                         errors.append(f"Error updating stats for {user_id}: {str(e)}")
                     
+                    # إعادة الجدولة أو تعطيل التذكير بناءً على interval_days
                     if interval_days > 0:
-                        # إعادة جدولة التذكير التالي
+                        # إعادة جدولة التذكير التالي للتذكيرات المتكررة
                         try:
                             next_time = remind_at + timedelta(days=interval_days)
                             c.execute("UPDATE reminders SET remind_at = ? WHERE id = ?", 
@@ -143,11 +144,11 @@ def send_due_reminders():
                             logging.error(f"❌ Error rescheduling reminder {reminder_id}: {str(e)}")
                             errors.append(f"Error rescheduling reminder {reminder_id}: {str(e)}")
                     else:
-                        # إيقاف التذكير إذا كان لمرة واحدة
+                        # إيقاف التذكير فقط إذا كان لمرة واحدة (غير متكرر)
                         try:
                             c.execute("UPDATE reminders SET active = 0 WHERE id = ?", (reminder_id,))
                             conn.commit()  # التأكد من Commit بعد كل عملية UPDATE
-                            logging.info(f"✅ تم إرسال تذكير لمرة واحدة لـ {user_id}: {reminder_type}")
+                            logging.info(f"✅ تم إرسال تذكير لمرة واحدة لـ {user_id}: {reminder_type} وتم تعطيله")
                         except Exception as e:
                             logging.error(f"❌ Error deactivating reminder {reminder_id}: {str(e)}")
                             errors.append(f"Error deactivating reminder {reminder_id}: {str(e)}")
