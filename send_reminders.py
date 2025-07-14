@@ -37,6 +37,7 @@ def send_due_reminders():
     
     sent_count = 0
     errors = []
+    processed_reminders = set()  # لتتبع التذكيرات التي تم معالجتها في هذه الجلسة
 
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -63,6 +64,12 @@ def send_due_reminders():
         else:
             for reminder in reminders:
                 reminder_id, user_id, reminder_type, custom_message, remind_at_str, interval_days = reminder
+                
+                # تجاهل التذكير إذا تم معالجته في هذه الجلسة
+                if reminder_id in processed_reminders:
+                    logging.info(f"⚠️ Skipping already processed reminder {reminder_id} for {user_id}")
+                    continue
+                
                 logging.info(f"📌 Processing reminder {reminder_id} for {user_id} at {remind_at_str} (Type: {reminder_type})")
                 
                 # تحقق من تنسيق الوقت
@@ -72,7 +79,7 @@ def send_due_reminders():
                 except ValueError:
                     logging.error(f"❌ Invalid time format for reminder {reminder_id}: {remind_at_str}")
                     errors.append(f"Invalid time format for reminder {reminder_id}")
-                    continue  # تجاهل التذكير إذا كان تنسيق الوقت غير Sahih
+                    continue  # تجاهل التذكير إذا كان تنسيق الوقت غير صحيح
                 
                 message = custom_message if custom_message else f"⏰ تذكير: {reminder_type} الآن."
                 if reminder_type == "موعد" and not custom_message:
@@ -95,6 +102,9 @@ def send_due_reminders():
                     if response.status_code == 200:
                         sent_count += 1
                         logging.info(f"✅ تم إرسال تذكير لـ {user_id}: {reminder_type}")
+                        
+                        # إضافة التذكير إلى مجموعة المعالجة لتجنب التكرار في نفس الجلسة
+                        processed_reminders.add(reminder_id)
                         
                         # تحديث إحصائيات التذكيرات المرسلة (باستخدام INSERT ... ON CONFLICT)
                         try:
