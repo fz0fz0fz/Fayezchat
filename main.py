@@ -22,36 +22,44 @@ def index():
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    payload = request.get_json(force=True, silent=True) or {}
-    event_type = payload.get("event_type")
-
-    # نتعامل فقط مع رسائل الدردشات
-    if event_type != "message_received":
-        return jsonify({"status": "ignored"}), 200
-
-    data = payload.get("data", {})
-    message = (data.get("body") or "").strip()
-    sender = (data.get("from") or "").strip()
-
-    # تجاهل الرسائل الناقصة
-    if not message or not sender:
-        logging.warning(f"🚨 تم تجاهل رسالة ناقصة: {data}")
-        return jsonify({"status": "ignored"}), 200
-
-    logging.info(f"📥 Received message from {sender}: {message}")
-
     try:
-        # معالجة الطلب بمنطق التذكير
-        response = handle_reminder(message, sender)
+        payload = request.get_json(force=True, silent=True) or {}
+        logging.info(f"📥 Raw webhook data: {payload}")  # تسجيل البيانات الخام للتحقق من التنسيق
+        
+        event_type = payload.get("event_type")
+
+        # نتعامل فقط مع رسائل الدردشات
+        if event_type != "message_received":
+            logging.info(f"🚨 تم تجاهل الحدث: {event_type}")
+            return jsonify({"status": "ignored"}), 200
+
+        data = payload.get("data", {})
+        message = (data.get("body") or "").strip()
+        sender = (data.get("from") or "").strip()
+
+        # تجاهل الرسائل الناقصة
+        if not message or not sender:
+            logging.warning(f"🚨 تم تجاهل رسالة ناقصة: {data}")
+            return jsonify({"status": "ignored"}), 200
+
+        logging.info(f"📥 Received message from {sender}: {message}")
+
+        # معالجة الطلب بمنطق التذكير (تصحيح ترتيب الوسيطات)
+        response = handle_reminder(sender, message)
 
         # إرسال الرد إن وُجد
         if response and "reply" in response:
             success = send_whatsapp_message(sender, response["reply"])
+            logging.info(f"📤 Sent reply to {sender}: {'Success' if success else 'Failed'}")
+            return jsonify({"status": "sent" if success else "send_failed"}), 200
+        elif response and "text" in response:
+            success = send_whatsapp_message(sender, response["text"])
+            logging.info(f"📤 Sent response text to {sender}: {'Success' if success else 'Failed'}")
             return jsonify({"status": "sent" if success else "send_failed"}), 200
 
         return jsonify({"status": "no_action"}), 200
     except Exception as e:
-        logging.error(f"❌ Error processing request: {e}")
+        logging.exception(f"❌ Error processing request: {e}")
         return jsonify({"status": "error"}), 500
 
 # مسار لإرسال التذكيرات تلقائيًا (يتم استدعاؤه من Cron)
