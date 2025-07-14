@@ -38,7 +38,7 @@ def send_due_reminders():
     
     sent_count = 0
     errors = []
-    processed_reminders = set()  # لتتبع التذكيرات التي تم معalجتها في هذه الجلسة
+    processed_reminders = set()  # لتتبع التذكيرات التي تم معالجتها في هذه الجلسة
 
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -165,5 +165,4 @@ def send_due_reminders():
 if __name__ == "__main__":
     result = send_due_reminders()
     print(f"📤 عدد التذكيرات المرسلة: {result['sent_count']}")
-    if result.get("errors") != "No errors":
-        print(f"⚠️ الأخطاء: {result['errors']}")
+    if result.get("errors")
