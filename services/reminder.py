@@ -338,4 +338,173 @@ def handle(msg: str, sender: str) -> Dict[str, str]:
                 return {"reply": "❌ لا توجد بيانات متاحة عن الصيدليات حاليًا.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
             reply = "💊 *قائمة الصيدليات:*\n\n"
             for category in categories:
-                code
+                code, name, description, morning_start, morning_end, evening_start, evening_end = category
+                reply += f"🏢 *{name}*\n{description}\n⏰ *دوام الصباح*: {morning_start} - {morning_end}\n⏰ *دوام المساء*: {evening_start} - {evening_end}\n\n"
+            reply += "↩️ للرجوع (00) | 🏠 رئيسية (0)"
+            set_session(sender, {"menu": "main", "last_menu": ""})
+            return {"reply": reply}
+        else:
+            set_session(sender, {"menu": "main", "last_menu": ""})
+            return {"reply": MAIN_MENU_TEXT}
+
+    # Reminder main menu processing
+    elif current_menu == "reminder_main":
+        if text == "1":
+            set_session(sender, {
+                "menu": "reminder_date",
+                "last_menu": "reminder_main",
+                "reminder_type": "موعد",
+                "interval_days": 0
+            })
+            return {"reply": f"📅 أرسل تاريخ الموعد بالميلادي فقط (مثل: 17-08-2025):\nسيتم تذكيرك قبل الموعد بيوم واحد.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
+        elif text == "2":
+            set_session(sender, {
+                "menu": "reminder_date",
+                "last_menu": "reminder_main",
+                "reminder_type": "يومي",
+                "interval_days": 1
+            })
+            return {"reply": f"📅 أرسل تاريخ بدء التذكير اليومي بالميلادي (مثل: 17-08-2025):\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
+        elif text == "3":
+            set_session(sender, {
+                "menu": "reminder_date",
+                "last_menu": "reminder_main",
+                "reminder_type": "أسبوعي",
+                "interval_days": 7
+            })
+            return {"reply": f"📅 أرسل تاريخ بدء التذكير الأسبوعي بالميلادي (مثل: 17-08-2025):\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
+        elif text == "4":
+            return list_user_reminders(sender, sender)
+        elif text == "5":
+            return get_user_stats(sender, sender)
+        else:
+            set_session(sender, {"menu": "reminder_main", "last_menu": "main"})
+            return {"reply": f"❌ اختر رقمًا من 1 إلى 5 أو أرسل 'حذف'.\n\n{REMINDER_MENU_TEXT}"}
+
+    # Reminder date input processing
+    elif current_menu == "reminder_date":
+        date_info = is_valid_date(text)
+        if date_info:
+            formatted_date = f"{date_info['year']}-{date_info['month']:02d}-{date_info['day']:02d}"
+            set_session(sender, {
+                "menu": "reminder_time",
+                "last_menu": "reminder_date",
+                "reminder_type": session.get("reminder_type", "موعد"),
+                "interval_days": session.get("interval_days", 0),
+                "date": formatted_date
+            })
+            return {"reply": f"⏰ أدخل وقت التذكير بالصيغة HH:MM (مثل: 15:30):\n(يمكنك إرسال 'تخطي' لضبطه على 00:00)\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
+        else:
+            set_session(sender, session)
+            return {"reply": f"❌ صيغة التاريخ غير صحيحة. أرسل التاريخ مثل: 17-08-2025\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
+
+    # Reminder time input processing
+    elif current_menu == "reminder_time":
+        time_info = is_valid_time(text) if text.lower() not in ["تخطي", "skip"] else {"hour": 0, "minute": 0}
+        if time_info:
+            formatted_time = f"{time_info['hour']:02d}:{time_info['minute']:02d}"
+            set_session(sender, {
+                "menu": "reminder_message",
+                "last_menu": "reminder_time",
+                "reminder_type": session.get("reminder_type", "موعد"),
+                "interval_days": session.get("interval_days", 0),
+                "date": session.get("date", ""),
+                "time": formatted_time
+            })
+            return {"reply": f"📝 أدخل رسالة مخصصة للتذكير (أو 'تخطي' إذا لا تريد):\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
+        else:
+            set_session(sender, session)
+            return {"reply": f"❌ صيغة الوقت غير صحيحة. أرسل الوقت مثل: 15:30 أو 'تخطي'\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
+
+    # Reminder message input processing
+    elif current_menu == "reminder_message":
+        reminder_type = session.get("reminder_type", "موعد")
+        interval_days = session.get("interval_days", 0)
+        date_str = session.get("date", "")
+        time_str = session.get("time", "00:00")
+        
+        # تحويل الوقت إلى UTC+3
+        remind_at_dt = datetime.strptime(f"{date_str} {time_str}:00", "%Y-%m-%d %H:%M:%S")
+        saudi_tz = pytz.timezone('Asia/Riyadh')  # UTC+3
+        remind_at_dt = remind_at_dt.replace(tzinfo=pytz.utc).astimezone(saudi_tz)  # ضبط إلى UTC+3
+        remind_at = remind_at_dt.strftime("%Y-%m-%d %H:%M:%S")  # حفظ كـ string
+        
+        if reminder_type == "موعد":
+            remind_at_dt = remind_at_dt - timedelta(days=1)  # طرح يوم واحد
+            remind_at = remind_at_dt.strftime("%Y-%m-%d %H:%M:%S")
+        
+        message = None if text.lower() in ["تخطي", "skip"] else text
+        if save_reminder(sender, reminder_type, message, remind_at, interval_days):
+            repeat_text = f"يتكرر كل {interval_days} يوم" if interval_days > 0 else "لن يتكرر"
+            set_session(sender, {"menu": "reminder_main", "last_menu": "main"})
+            return {"reply": f"✅ تم ضبط التذكير بنجاح لـ '{reminder_type}' في {remind_at}\nالتكرار: {repeat_text}\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
+        else:
+            set_session(sender, {"menu": "reminder_main", "last_menu": "main"})
+            return {"reply": f"❌ حدث خطأ أثناء ضبط التذكير. حاول مرة أخرى.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
+
+    # Edit reminder date input
+    elif current_menu == "reminder_edit_date":
+        reminder_id = session.get("reminder_id")
+        if text.lower() in ["تخطي", "skip"]:
+            set_session(sender, {
+                "menu": "reminder_edit_time",
+                "last_menu": "reminder_edit_date",
+                "reminder_id": reminder_id
+            })
+            return {"reply": f"⏰ أدخل وقت التذكير الجديد بالصيغة HH:MM (مثل: 15:30) أو 'تخطي':\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
+        date_info = is_valid_date(text)
+        if date_info:
+            formatted_date = f"{date_info['year']}-{date_info['month']:02d}-{date_info['day']:02d}"
+            set_session(sender, {
+                "menu": "reminder_edit_time",
+                "last_menu": "reminder_edit_date",
+                "reminder_id": reminder_id,
+                "new_date": formatted_date
+            })
+            return {"reply": f"⏰ أدخل وقت التذكير الجديد بالصيغة HH:MM (مثل: 15:30) أو 'تخطي':\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
+        else:
+            set_session(sender, session)
+            return {"reply": f"❌ صيغة التاريخ غير صحيحة. أرسل التاريخ مثل: 17-08-2025 أو 'تخطي'\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
+
+    # Edit reminder time input
+    elif current_menu == "reminder_edit_time":
+        reminder_id = session.get("reminder_id")
+        if text.lower() in ["تخطي", "skip"]:
+            set_session(sender, {
+                "menu": "reminder_edit_message",
+                "last_menu": "reminder_edit_time",
+                "reminder_id": reminder_id,
+                "new_date": session.get("new_date", "")
+            })
+            return {"reply": f"📝 أدخل رسالة جديدة للتذكير (أو 'تخطي' للاحتفاظ بالرسالة الحالية):\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
+        time_info = is_valid_time(text)
+        if time_info:
+            new_date = session.get("new_date", "")
+            formatted_time = f"{time_info['hour']:02d}:{time_info['minute']:02d}"
+            remind_at = f"{new_date} {formatted_time}:00" if new_date else None
+            if new_date and remind_at and session.get("reminder_type", "") == "موعد":
+                date_obj = datetime.strptime(new_date, "%Y-%m-%d")
+                remind_at = (date_obj - timedelta(days=1)).strftime("%Y-%m-%d") + f" {formatted_time}:00"
+            set_session(sender, {
+                "menu": "reminder_edit_message",
+                "last_menu": "reminder_edit_time",
+                "reminder_id": reminder_id,
+                "new_remind_at": remind_at if remind_at else ""
+            })
+            return {"reply": f"📝 أدخل رسالة جديدة للتذكير (أو 'تخطي' للاحتفاظ بالرسالة الحالية):\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
+        else:
+            set_session(sender, session)
+            return {"reply": f"❌ صيغة الوقت غير صحيحة. أرسل الوقت مثل: 15:30 أو 'تخطي'\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)"}
+
+    # Edit reminder message input
+    elif current_menu == "reminder_edit_message":
+        reminder_id = session.get("reminder_id")
+        new_remind_at = session.get("new_remind_at", "")
+        message = None if text.lower() in ["تخطي", "skip"] else text
+        result = update_reminder(sender, reminder_id, remind_at=new_remind_at if new_remind_at else None, message=message)
+        set_session(sender, {"menu": "reminder_main", "last_menu": "main"})
+        return result
+
+    # Fallback for unrecognized state or input
+    set_session(sender, {"menu": "main", "last_menu": ""})
+    return {"reply": MAIN_MENU_TEXT}
