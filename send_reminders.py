@@ -1,5 +1,5 @@
 # send_reminders.py
-import sqlite3
+import psycopg2
 import os
 from datetime import datetime, timedelta
 import requests
@@ -19,7 +19,8 @@ if not INSTANCE_ID or not TOKEN:
 else:
     API_URL = f"https://api.ultramsg.com/{INSTANCE_ID}/messages/chat"
 
-DB_PATH = "reminders.db"
+# الحصول على DATABASE_URL من متغيرات البيئة
+DB_URL = os.getenv("DATABASE_URL")
 
 def send_due_reminders():
     """
@@ -41,14 +42,14 @@ def send_due_reminders():
     processed_reminders = set()  # لتتبع التذكيرات التي تم معالجتها في هذه الجلسة
 
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = psycopg2.connect(DB_URL)
         c = conn.cursor()
 
         # جلب التذكيرات المستحقة (remind_at أقل من أو يساوي الوقت الحالي المُعدل)
         c.execute("""
             SELECT id, user_id, reminder_type, message, remind_at, interval_days
             FROM reminders
-            WHERE active = 1 AND remind_at <= ?
+            WHERE active = TRUE AND remind_at <= %s
         """, (now,))
         reminders = c.fetchall()
         
@@ -57,7 +58,7 @@ def send_due_reminders():
         if not reminders:
             logging.info(f"✅ No due reminders found at {now}")
             # للتحقق من التذكيرات النشطة الموجودة في قاعدة البيانات
-            c.execute("SELECT id, user_id, reminder_type, remind_at, interval_days FROM reminders WHERE active = 1")
+            c.execute("SELECT id, user_id, reminder_type, remind_at, interval_days FROM reminders WHERE active = TRUE")
             all_reminders = c.fetchall()
             logging.info(f"📋 Total active reminders in database: {len(all_reminders)}")
             for reminder in all_reminders:
@@ -123,8 +124,8 @@ def send_due_reminders():
                     try:
                         c.execute('''
                             INSERT INTO reminder_stats (user_id, reminders_sent)
-                            VALUES (?, 1)
-                            ON CONFLICT(user_id) DO UPDATE SET reminders_sent = reminders_sent + 1
+                            VALUES (%s, 1)
+                            ON CONFLICT (user_id) DO UPDATE SET reminders_sent = reminder_stats.reminders_sent + 1
                         ''', (user_id,))
                         logging.info(f"📊 Updated stats for {user_id}")
                     except Exception as e:
@@ -136,7 +137,7 @@ def send_due_reminders():
                         # إعادة جدولة التذكير التالي للتذكيرات المتكررة
                         try:
                             next_time = remind_at + timedelta(days=interval_days)
-                            c.execute("UPDATE reminders SET remind_at = ? WHERE id = ?", 
+                            c.execute("UPDATE reminders SET remind_at = %s WHERE id = %s", 
                                       (next_time.strftime("%Y-%m-%d %H:%M:%S"), reminder_id))
                             conn.commit()  # التأكد من Commit بعد كل عملية UPDATE
                             logging.info(f"🔁 إعادة جدولة {reminder_type} لـ {user_id} بعد {interval_days} يوم/أيام إلى {next_time.strftime('%Y-%m-%d %H:%M:%S')}")
@@ -145,25 +146,3 @@ def send_due_reminders():
                             errors.append(f"Error rescheduling reminder {reminder_id}: {str(e)}")
                     else:
                         # إيقاف التذكير فقط إذا كان لمرة واحدة (غير متكرر)
-                        try:
-                            c.execute("UPDATE reminders SET active = 0 WHERE id = ?", (reminder_id,))
-                            conn.commit()  # التأكد من Commit بعد كل عملية UPDATE
-                            logging.info(f"✅ تم إرسال تذكير لمرة واحدة لـ {user_id}: {reminder_type} وتم تعطيله")
-                        except Exception as e:
-                            logging.error(f"❌ Error deactivating reminder {reminder_id}: {str(e)}")
-                            errors.append(f"Error deactivating reminder {reminder_id}: {str(e)}")
-
-        conn.commit()
-    except Exception as e:
-        errors.append(f"Database error: {str(e)}")
-        logging.error(f"❌ خطأ في الوصول إلى قاعدة البيانات: {e}")
-    finally:
-        conn.close()
-
-    return {"sent_count": sent_count, "errors": errors if errors else "No errors"}
-
-if __name__ == "__main__":
-    result = send_due_reminders()
-    print(f"📤 عدد التذكيرات المرسلة: {result['sent_count']}")
-    if result.get("errors") != "No errors":
-        print(f"⚠️ الأخطاء: {result['errors']}")
