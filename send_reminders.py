@@ -94,70 +94,63 @@ def send_due_reminders():
 
                 # إرسال الرسالة عبر UltraMsg مع إعادة المحاولة
                 try:
-                    logging.info(f"📤 Trying to send message to {user_id}: {message[:50]}...")
-                    success = False
-                    for attempt in range(3):  # محاولة إرسال الرسالة حتى 3 مرات
-                        try:
-                            response = requests.post(API_URL, data={
-                                "token": TOKEN,
-                                "to": user_id,
-                                "body": message
-                            }, timeout=10)
-                            if response.status_code == 200:
-                                sent_count += 1
-                                logging.info(f"✅ تم إرسال تذكير لـ {user_id}: {reminder_type} في المحاولة {attempt + 1}")
-                                success = True
-                                break  # توقف إذا نجح الإرسال
-                            else:
-                                logging.error(f"❌ فشل إرسال تذكير لـ {user_id} في المحاولة {attempt + 1}: Status {response.status_code}, Response: {response.text[:100]}...")
-                                if attempt < 2:  # انتظر فقط في المحاولات غير الأخيرة
-                                    time.sleep(5)  # انتظر 5 ثواني قبل المحاولة التالية
-                        except requests.exceptions.RequestException as e:
-                            logging.error(f"❌ خطأ في الاتصال في المحاولة {attempt + 1} لـ {user_id}: {str(e)}")
-                            if attempt < 2:
-                                time.sleep(5)
-                    if not success:
+                    for attempt in range(3):  # محاولة 3 مرات
+                        logging.info(f"📤 Trying to send message to {user_id}: {message[:50]}... (Attempt {attempt + 1})")
+                        response = requests.post(API_URL, data={
+                            "token": TOKEN,
+                            "to": user_id,
+                            "body": message
+                        }, timeout=10)
+                        if response.status_code == 200:
+                            sent_count += 1
+                            logging.info(f"✅ تم إرسال تذكير لـ {user_id}: {reminder_type}")
+                            # إضافة التذكير إلى مجموعة المعالجة لتجنب التكرار في نفس الجلسة
+                            processed_reminders.add(reminder_id)
+                            break  # الخروج من الحلقة إذا نجح الإرسال
+                        else:
+                            logging.error(f"❌ فشل إرسال تذكير لـ {user_id} في المحاولة {attempt + 1}: {response.text}")
+                            if attempt < 2:  # الانتظار فقط في المحاولات غير الأخيرة
+                                time.sleep(5)  # انتظار 5 ثواني قبل المحاولة التالية
+                    else:
                         errors.append(f"Failed to send to {user_id} after 3 attempts")
                         logging.error(f"❌ فشل إرسال تذكير لـ {user_id} بعد 3 محاولات")
-                    else:
-                        # إضافة التذكير إلى مجموعة المعالجة لتجنب التكرار في نفس الجلسة
-                        processed_reminders.add(reminder_id)
-                        
-                        # تحديث إحصائيات التذكيرات المرسلة (باستخدام INSERT ... ON CONFLICT)
-                        try:
-                            c.execute('''
-                                INSERT INTO reminder_stats (user_id, reminders_sent)
-                                VALUES (?, 1)
-                                ON CONFLICT(user_id) DO UPDATE SET reminders_sent = reminders_sent + 1
-                            ''', (user_id,))
-                            logging.info(f"📊 Updated stats for {user_id}")
-                        except Exception as e:
-                            logging.error(f"❌ Error updating stats for {user_id}: {str(e)}")
-                            errors.append(f"Error updating stats for {user_id}: {str(e)}")
-                        
-                        if interval_days > 0:
-                            # إعادة جدولة التذكير التالي
-                            try:
-                                next_time = remind_at + timedelta(days=interval_days)
-                                c.execute("UPDATE reminders SET remind_at = ? WHERE id = ?", 
-                                          (next_time.strftime("%Y-%m-%d %H:%M:%S"), reminder_id))
-                                conn.commit()  # التأكد من Commit بعد كل عملية UPDATE
-                                logging.info(f"🔁 إعادة جدولة {reminder_type} لـ {user_id} بعد {interval_days} يوم/أيام إلى {next_time.strftime('%Y-%m-%d %H:%M:%S')}")
-                            except Exception as e:
-                                logging.error(f"❌ Error rescheduling reminder {reminder_id}: {str(e)}")
-                                errors.append(f"Error rescheduling reminder {reminder_id}: {str(e)}")
-                        else:
-                            # إيقاف التذكير إذا كان لمرة واحدة
-                            try:
-                                c.execute("UPDATE reminders SET active = 0 WHERE id = ?", (reminder_id,))
-                                conn.commit()  # التأكد من Commit بعد كل عملية UPDATE
-                                logging.info(f"✅ تم إرسال تذكير لمرة واحدة لـ {user_id}: {reminder_type}")
-                            except Exception as e:
-                                logging.error(f"❌ Error deactivating reminder {reminder_id}: {str(e)}")
-                                errors.append(f"Error deactivating reminder {reminder_id}: {str(e)}")
                 except Exception as e:
                     errors.append(f"Error sending to {user_id}: {str(e)}")
                     logging.error(f"❌ خطأ أثناء إرسال تذكير لـ {user_id}: {e}")
+
+                # تحديث إحصائيات التذكيرات المرسلة (باستخدام INSERT ... ON CONFLICT)
+                if response.status_code == 200:
+                    try:
+                        c.execute('''
+                            INSERT INTO reminder_stats (user_id, reminders_sent)
+                            VALUES (?, 1)
+                            ON CONFLICT(user_id) DO UPDATE SET reminders_sent = reminders_sent + 1
+                        ''', (user_id,))
+                        logging.info(f"📊 Updated stats for {user_id}")
+                    except Exception as e:
+                        logging.error(f"❌ Error updating stats for {user_id}: {str(e)}")
+                        errors.append(f"Error updating stats for {user_id}: {str(e)}")
+                    
+                    if interval_days > 0:
+                        # إعادة جدولة التذكير التالي
+                        try:
+                            next_time = remind_at + timedelta(days=interval_days)
+                            c.execute("UPDATE reminders SET remind_at = ? WHERE id = ?", 
+                                      (next_time.strftime("%Y-%m-%d %H:%M:%S"), reminder_id))
+                            conn.commit()  # التأكد من Commit بعد كل عملية UPDATE
+                            logging.info(f"🔁 إعادة جدولة {reminder_type} لـ {user_id} بعد {interval_days} يوم/أيام إلى {next_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                        except Exception as e:
+                            logging.error(f"❌ Error rescheduling reminder {reminder_id}: {str(e)}")
+                            errors.append(f"Error rescheduling reminder {reminder_id}: {str(e)}")
+                    else:
+                        # إيقاف التذكير إذا كان لمرة واحدة
+                        try:
+                            c.execute("UPDATE reminders SET active = 0 WHERE id = ?", (reminder_id,))
+                            conn.commit()  # التأكد من Commit بعد كل عملية UPDATE
+                            logging.info(f"✅ تم إرسال تذكير لمرة واحدة لـ {user_id}: {reminder_type}")
+                        except Exception as e:
+                            logging.error(f"❌ Error deactivating reminder {reminder_id}: {str(e)}")
+                            errors.append(f"Error deactivating reminder {reminder_id}: {str(e)}")
 
         conn.commit()
     except Exception as e:
