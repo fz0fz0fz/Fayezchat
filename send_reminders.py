@@ -4,6 +4,7 @@ import os
 from datetime import datetime, timedelta
 import requests
 import logging
+import time
 
 # تهيئة السجل (Logging)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -91,18 +92,34 @@ def send_due_reminders():
                     errors.append(f"Invalid user_id format for reminder {reminder_id}")
                     continue  # تجاهل التذكير إذا كان تنسيق user_id غير صحيح
 
-                # إرسال الرسالة عبر UltraMsg
+                # إرسال الرسالة عبر UltraMsg مع إعادة المحاولة
                 try:
                     logging.info(f"📤 Trying to send message to {user_id}: {message[:50]}...")
-                    response = requests.post(API_URL, data={
-                        "token": TOKEN,
-                        "to": user_id,
-                        "body": message
-                    }, timeout=10)
-                    if response.status_code == 200:
-                        sent_count += 1
-                        logging.info(f"✅ تم إرسال تذكير لـ {user_id}: {reminder_type}")
-                        
+                    success = False
+                    for attempt in range(3):  # محاولة إرسال الرسالة حتى 3 مرات
+                        try:
+                            response = requests.post(API_URL, data={
+                                "token": TOKEN,
+                                "to": user_id,
+                                "body": message
+                            }, timeout=10)
+                            if response.status_code == 200:
+                                sent_count += 1
+                                logging.info(f"✅ تم إرسال تذكير لـ {user_id}: {reminder_type} في المحاولة {attempt + 1}")
+                                success = True
+                                break  # توقف إذا نجح الإرسال
+                            else:
+                                logging.error(f"❌ فشل إرسال تذكير لـ {user_id} في المحاولة {attempt + 1}: Status {response.status_code}, Response: {response.text[:100]}...")
+                                if attempt < 2:  # انتظر فقط في المحاولات غير الأخيرة
+                                    time.sleep(5)  # انتظر 5 ثواني قبل المحاولة التالية
+                        except requests.exceptions.RequestException as e:
+                            logging.error(f"❌ خطأ في الاتصال في المحاولة {attempt + 1} لـ {user_id}: {str(e)}")
+                            if attempt < 2:
+                                time.sleep(5)
+                    if not success:
+                        errors.append(f"Failed to send to {user_id} after 3 attempts")
+                        logging.error(f"❌ فشل إرسال تذكير لـ {user_id} بعد 3 محاولات")
+                    else:
                         # إضافة التذكير إلى مجموعة المعالجة لتجنب التكرار في نفس الجلسة
                         processed_reminders.add(reminder_id)
                         
@@ -138,9 +155,6 @@ def send_due_reminders():
                             except Exception as e:
                                 logging.error(f"❌ Error deactivating reminder {reminder_id}: {str(e)}")
                                 errors.append(f"Error deactivating reminder {reminder_id}: {str(e)}")
-                    else:
-                        errors.append(f"Failed to send to {user_id}: {response.text}")
-                        logging.error(f"❌ فشل إرسال تذكير لـ {user_id}: {response.text}")
                 except Exception as e:
                     errors.append(f"Error sending to {user_id}: {str(e)}")
                     logging.error(f"❌ خطأ أثناء إرسال تذكير لـ {user_id}: {e}")
