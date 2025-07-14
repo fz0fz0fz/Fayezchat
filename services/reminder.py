@@ -1,8 +1,8 @@
-# services/reminder.py
 import re
 import sqlite3
 import os
 from datetime import datetime, timedelta
+import pytz
 from typing import Dict, Optional
 from services.session import get_session, set_session
 from services.db import get_categories
@@ -415,10 +415,17 @@ def handle(msg: str, sender: str) -> Dict[str, str]:
         interval_days = session.get("interval_days", 0)
         date_str = session.get("date", "")
         time_str = session.get("time", "00:00")
-        remind_at = f"{date_str} {time_str}:00"
+        
+        # تحويل الوقت إلى UTC+3
+        remind_at_dt = datetime.strptime(f"{date_str} {time_str}:00", "%Y-%m-%d %H:%M:%S")
+        saudi_tz = pytz.timezone('Asia/Riyadh')  # UTC+3
+        remind_at_dt = remind_at_dt.replace(tzinfo=pytz.utc).astimezone(saudi_tz)  # ضبط إلى UTC+3
+        remind_at = remind_at_dt.strftime("%Y-%m-%d %H:%M:%S")  # حفظ كـ string
+        
         if reminder_type == "موعد":
-            date_obj = datetime.strptime(date_str, "%Y-%m-%d")
-            remind_at = (date_obj - timedelta(days=1)).strftime("%Y-%m-%d") + f" {time_str}:00"
+            remind_at_dt = remind_at_dt - timedelta(days=1)  # طرح يوم واحد
+            remind_at = remind_at_dt.strftime("%Y-%m-%d %H:%M:%S")
+        
         message = None if text.lower() in ["تخطي", "skip"] else text
         if save_reminder(sender, reminder_type, message, remind_at, interval_days):
             repeat_text = f"يتكرر كل {interval_days} يوم" if interval_days > 0 else "لن يتكرر"
