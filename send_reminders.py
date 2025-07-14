@@ -146,3 +146,21 @@ def send_due_reminders():
                             errors.append(f"Error rescheduling reminder {reminder_id}: {str(e)}")
                     else:
                         # إيقاف التذكير فقط إذا كان لمرة واحدة (غير متكرر)
+                        try:
+                            c.execute("UPDATE reminders SET active = FALSE WHERE id = %s", (reminder_id,))
+                            conn.commit()  # التأكد من Commit بعد كل عملية UPDATE
+                            logging.info(f"❌ تم تعطيل التذكير {reminder_id} لـ {user_id} (غير متكرر)")
+                        except Exception as e:
+                            logging.error(f"❌ Error disabling reminder {reminder_id}: {str(e)}")
+                            errors.append(f"Error disabling reminder {reminder_id}: {str(e)}")
+
+        conn.commit()
+        return {"sent_count": sent_count, "errors": "; ".join(errors) if errors else "No errors"}
+
+    except Exception as e:
+        logging.error(f"❌ Database error: {e}")
+        return {"sent_count": sent_count, "errors": f"Database error: {str(e)}"}
+    finally:
+        if 'conn' in locals():
+            conn.close()
+            logging.info("🔒 Database connection closed")
