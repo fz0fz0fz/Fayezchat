@@ -2,7 +2,7 @@ import logging
 import os
 from flask import Flask, request, jsonify
 from services.reminder import handle as handle_reminder, init_reminder_db
-from send_reminders import send_due_reminders  # استيراد دالة إرسال التذكيرات
+from send_reminders import send_due_reminders
 
 app = Flask(__name__)
 
@@ -15,7 +15,6 @@ logging.basicConfig(
 # إنشاء جدول التذكيرات إن لم يكن موجودًا
 init_reminder_db()
 
-# مسارات Flask
 @app.route("/")
 def index():
     return "خدمة واتساب بوت تعمل ✅"
@@ -24,11 +23,9 @@ def index():
 def webhook():
     try:
         payload = request.get_json(force=True, silent=True) or {}
-        logging.info(f"📥 Raw webhook data: {payload}")  # تسجيل البيانات الخام للتحقق من التنسيق
+        logging.info(f"📥 Raw webhook data: {payload}")
         
         event_type = payload.get("event_type")
-
-        # نتعامل فقط مع رسائل الدردشات
         if event_type != "message_received":
             logging.info(f"🚨 تم تجاهل الحدث: {event_type}")
             return jsonify({"status": "ignored"}), 200
@@ -37,35 +34,24 @@ def webhook():
         message = (data.get("body") or "").strip()
         sender = (data.get("from") or "").strip()
 
-        # تجاهل الرسائل الناقصة
         if not message or not sender:
             logging.warning(f"🚨 تم تجاهل رسالة ناقصة: {data}")
             return jsonify({"status": "ignored"}), 200
 
         logging.info(f"📥 Received message from {sender}: {message}")
 
-        # معالجة الطلب بمنطق التذكير
         response = handle_reminder(sender, message)
 
-        # إرسال الرد إن وُجد
-        if response and "reply" in response:
-            success = send_whatsapp_message(sender, response["reply"])
-            logging.info(f"📤 Sent reply to {sender}: {'Success' if success else 'Failed'}")
-            return jsonify({"status": "sent" if success else "send_failed"}), 200
-        elif response and "text" in response:
+        if response and "text" in response:
             success = send_whatsapp_message(sender, response["text"])
-            logging.info(f"📤 Sent response text to {sender}: {'Success' if success else 'Failed'}")
+            logging.info(f"📤 Sent response to {sender}: {'Success' if success else 'Failed'}")
             return jsonify({"status": "sent" if success else "send_failed"}), 200
 
         return jsonify({"status": "no_action"}), 200
     except Exception as e:
         logging.exception(f"❌ Error processing request: {e}")
-        error_message = "حدث خطأ داخلي. حاول مرة أخرى لاحقًا."
-        if sender:  # إذا كان لدينا معرف المرسل، حاول إرسال رد خطأ
-            send_whatsapp_message(sender, error_message)
         return jsonify({"status": "error"}), 500
 
-# مسار لإرسال التذكيرات تلقائيًا (يتم استدعاؤه من Cron)
 @app.route("/send_reminders", methods=["GET", "POST"])
 def send_reminders_endpoint():
     try:
@@ -76,10 +62,8 @@ def send_reminders_endpoint():
         logging.error(f"❌ خطأ أثناء إرسال التذكيرات: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# إرسال الرسائل عبر UltraMsg
 def send_whatsapp_message(to: str, body: str) -> bool:
     import requests
-
     INSTANCE_ID = os.getenv("ULTRAMSG_INSTANCE_ID")
     TOKEN = os.getenv("ULTRAMSG_TOKEN")
     
@@ -98,6 +82,5 @@ def send_whatsapp_message(to: str, body: str) -> bool:
         logging.error(f"❌ Failed to send message: {e}")
         return False
 
-# نقطة تشغيل التطبيق
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=False)
