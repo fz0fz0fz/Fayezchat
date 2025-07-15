@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify
 import os
 import requests
 import logging
-from services import handle_reminder, init_reminder_db
+from services import handle_reminder, init_reminder_db, init_session_db
 from send_reminders import send_due_reminders
 from dotenv import load_dotenv
 
@@ -63,5 +63,6 @@ def send_reminders_endpoint():
 
 if __name__ == "__main__":
     init_reminder_db()
+    init_session_db()
     port = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
