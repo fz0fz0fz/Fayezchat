@@ -158,4 +158,8 @@ def send_due_reminders():
 
     except Exception as e:
         logging.error(f"❌ Database error: {e}")
-        return {"sent_count": sent_count, "errors": f"
+        return {"sent_count": sent_count, "errors": f"Database error: {str(e)}"}
+    finally:
+        if 'conn' in locals():
+            conn.close()
+            logging.info("🔒 Database connection closed")
