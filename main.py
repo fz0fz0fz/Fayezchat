@@ -44,7 +44,7 @@ def webhook():
 
         logging.info(f"📥 Received message from {sender}: {message}")
 
-        # معالجة الطلب بمنطق التذكير (تصحيح ترتيب الوسيطات)
+        # معالجة الطلب بمنطق التذكير
         response = handle_reminder(sender, message)
 
         # إرسال الرد إن وُجد
@@ -60,6 +60,9 @@ def webhook():
         return jsonify({"status": "no_action"}), 200
     except Exception as e:
         logging.exception(f"❌ Error processing request: {e}")
+        error_message = "حدث خطأ داخلي. حاول مرة أخرى لاحقًا."
+        if sender:  # إذا كان لدينا معرف المرسل، حاول إرسال رد خطأ
+            send_whatsapp_message(sender, error_message)
         return jsonify({"status": "error"}), 500
 
 # مسار لإرسال التذكيرات تلقائيًا (يتم استدعاؤه من Cron)
