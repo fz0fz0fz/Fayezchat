@@ -6,18 +6,19 @@ from datetime import datetime, timedelta
 import pytz
 from .session import get_session, set_session
 from .db import get_categories
-from .db_pool import pool
+from .db_pool import get_db_connection, close_db_connection  # استيراد الدوال الجديدة
 import logging
 from dotenv import load_dotenv
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-def init_reminder_db():
-    if not pool:
-        logging.error("❌ DATABASE_URL not set in environment variables.")
-        return
-    conn = pool.getconn()
+def init_reminder_db(conn=None):
+    if not conn:
+        conn = get_db_connection()
+        if not conn:
+            logging.error("❌ DATABASE_URL not set in environment variables or connection failed.")
+            return
     try:
         c = conn.cursor()
         c.execute('''
@@ -42,10 +43,11 @@ def init_reminder_db():
     except psycopg2.DatabaseError as e:
         logging.error(f"❌ خطأ أثناء تهيئة قاعدة البيانات: {e}")
     finally:
-        if conn is not None:
-            pool.putconn(conn)
-            logging.info("🔒 Database connection returned to pool for init_reminder_db")
+        if not conn and conn is not None:
+            close_db_connection(conn)
+            logging.info("🔒 Database connection closed for init_reminder_db")
 
+# استدعاء init_reminder_db عند تحميل الملف باستخدام اتصال جديد
 init_reminder_db()
 
 def display_category_list(user_id: str, service: str, categories: List[Dict], session_data: Dict) -> Dict[str, str]:
@@ -222,7 +224,9 @@ def handle(user_id: str, message: str) -> Dict[str, str]:
     # قائمة التذكيرات
     elif current_state == "reminder_menu":
         if message == "حذف":
-            conn = pool.getconn()
+            conn = get_db_connection()
+            if not conn:
+                return {"text": "❌ فشل الاتصال بقاعدة البيانات.\n\n↩️ للرجوع للقائمة 🏠 الرئيسية (0)\n🔙 للرجوع إلى القائمة السابقة اضغط 00", "keyboard": "0||00"}
             try:
                 c = conn.cursor()
                 c.execute('UPDATE reminders SET active = FALSE WHERE user_id = %s', (user_id,))
@@ -236,8 +240,7 @@ def handle(user_id: str, message: str) -> Dict[str, str]:
                 response_text = "❌ حدث خطأ أثناء حذف التنبيهات.\n\n↩️ للرجوع للقائمة 🏠 الرئيسية (0)\n🔙 للرجوع إلى القائمة السابقة اضغط 00"
                 return {"text": response_text, "keyboard": "0||00"}
             finally:
-                if conn is not None:
-                    pool.putconn(conn)
+                close_db_connection(conn)
         elif message == "1":
             session_data["state"] = "set_reminder_type"
             session_data["history"] = history + [current_state]
@@ -260,7 +263,9 @@ def handle(user_id: str, message: str) -> Dict[str, str]:
             response_text = "📅 الرجاء إدخال تاريخ التذكير (YYYY-MM-DD):\n\n↩️ للرجوع للقائمة 🏠 الرئيسية (0)\n🔙 للرجوع إلى القائمة السابقة اضغط 00"
             return {"text": response_text, "keyboard": "0||00"}
         elif message == "4":
-            conn = pool.getconn()
+            conn = get_db_connection()
+            if not conn:
+                return {"text": "❌ فشل الاتصال بقاعدة البيانات.\n\n↩️ للرجوع للقائمة 🏠 الرئيسية (0)\n🔙 للرجوع إلى القائمة السابقة اضغط 00", "keyboard": "0||00"}
             try:
                 c = conn.cursor()
                 c.execute('SELECT id, reminder_type, message, remind_at, interval_days FROM reminders WHERE user_id = %s AND active = TRUE', (user_id,))
@@ -280,10 +285,11 @@ def handle(user_id: str, message: str) -> Dict[str, str]:
                 response_text = "❌ حدث خطأ أثناء جلب التنبيهات.\n\n↩️ للرجوع للقائمة 🏠 الرئيسية (0)\n🔙 للرجوع إلى القائمة السابقة اضغط 00"
                 return {"text": response_text, "keyboard": "0||00"}
             finally:
-                if conn is not None:
-                    pool.putconn(conn)
+                close_db_connection(conn)
         elif message == "5":
-            conn = pool.getconn()
+            conn = get_db_connection()
+            if not conn:
+                return {"text": "❌ فشل الاتصال بقاعدة البيانات.\n\n↩️ للرجوع للقائمة 🏠 الرئيسية (0)\n🔙 للرجوع إلى القائمة السابقة اضغط 00", "keyboard": "0||00"}
             try:
                 c = conn.cursor()
                 c.execute('SELECT reminders_sent FROM reminder_stats WHERE user_id = %s', (user_id,))
@@ -301,8 +307,7 @@ def handle(user_id: str, message: str) -> Dict[str, str]:
                 response_text = "❌ حدث خطأ أثناء جلب الإحصائيات.\n\n↩️ للرجوع للقائمة 🏠 الرئيسية (0)\n🔙 للرجوع إلى القائمة السابقة اضغط 00"
                 return {"text": response_text, "keyboard": "0||00"}
             finally:
-                if conn is not None:
-                    pool.putconn(conn)
+                close_db_connection(conn)
         response_text = (
             "⏰ *منبه* ⏰\n\n"
             "اختر نوع التذكير الذي تريده:\n\n"
@@ -367,7 +372,9 @@ def handle(user_id: str, message: str) -> Dict[str, str]:
         interval_map = {"1": 0, "2": 1, "3": 7, "4": 30}
         if message in interval_map:
             interval_days = interval_map[message]
-            conn = pool.getconn()
+            conn = get_db_connection()
+            if not conn:
+                return {"text": "❌ فشل الاتصال بقاعدة البيانات.\n\n↩️ للرجوع للقائمة 🏠 الرئيسية (0)\n🔙 للرجوع إلى القائمة السابقة اضغط 00", "keyboard": "0||00"}
             try:
                 c = conn.cursor()
                 c.execute('''
@@ -393,8 +400,7 @@ def handle(user_id: str, message: str) -> Dict[str, str]:
                 response_text = "❌ حدث خطأ أثناء إنشاء التذكير.\n\n↩️ للرجوع للقائمة 🏠 الرئيسية (0)\n🔙 للرجوع إلى القائمة السابقة اضغط 00"
                 return {"text": response_text, "keyboard": "0||00"}
             finally:
-                if conn is not None:
-                    pool.putconn(conn)
+                close_db_connection(conn)
         response_text = (
             "🔄 هل تريد تكرار التذكير؟\n\n"
             "1️⃣ بدون تكرار\n"
