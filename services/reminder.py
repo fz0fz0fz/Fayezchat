@@ -6,6 +6,10 @@ import pytz
 from typing import Dict, Optional
 from services.session import get_session, set_session
 from services.db import get_categories
+import logging
+
+# تهيئة السجل (Logging)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 # الحصول على DATABASE_URL من متغيرات البيئة
 DB_URL = os.getenv("DATABASE_URL")
@@ -15,7 +19,7 @@ def init_reminder_db() -> None:
     conn = None
     try:
         if not DB_URL:
-            print("❌ DATABASE_URL not set in environment variables.")
+            logging.error("❌ DATABASE_URL not set in environment variables.")
             return
         conn = psycopg2.connect(DB_URL)
         cursor = conn.cursor()
@@ -37,20 +41,20 @@ def init_reminder_db() -> None:
             )
         ''')
         conn.commit()
-        print("✅ Database initialized successfully with PostgreSQL")
+        logging.info("✅ Database initialized successfully with PostgreSQL")
     except Exception as e:
-        print(f"❌ Error initializing database: {e}")
+        logging.error(f"❌ Error initializing database: {e}")
     finally:
         if conn is not None:
             conn.close()
-            print("🔒 Database connection closed during initialization")
+            logging.info("🔒 Database connection closed during initialization")
 
 def save_reminder(user_id: str, reminder_type: str, message: Optional[str], remind_at: str, interval_days: int = 0) -> bool:
     """Save a new reminder to the database."""
     conn = None
     try:
         if not DB_URL:
-            print("❌ DATABASE_URL not set in environment variables.")
+            logging.error("❌ DATABASE_URL not set in environment variables.")
             return False
         conn = psycopg2.connect(DB_URL)
         cursor = conn.cursor()
@@ -61,43 +65,43 @@ def save_reminder(user_id: str, reminder_type: str, message: Optional[str], remi
         ''', (user_id, reminder_type, message, remind_at, interval_days))
         reminder_id = cursor.fetchone()[0]
         conn.commit()
-        print(f"✅ Reminder saved successfully for user {user_id}, ID: {reminder_id}, Type: {reminder_type}, At: {remind_at}, Interval: {interval_days} days")
+        logging.info(f"✅ Reminder saved successfully for user {user_id}, ID: {reminder_id}, Type: {reminder_type}, At: {remind_at}, Interval: {interval_days} days")
         return True
     except Exception as e:
-        print(f"❌ Error saving reminder for user {user_id}: {e}")
+        logging.error(f"❌ Error saving reminder for user {user_id}: {e}")
         return False
     finally:
         if conn is not None:
             conn.close()
-            print(f"🔒 Database connection closed for save_reminder user {user_id}")
+            logging.info(f"🔒 Database connection closed for save_reminder user {user_id}")
 
 def delete_all_reminders(user_id: str) -> bool:
     """Delete all reminders for a user from the database."""
     conn = None
     try:
         if not DB_URL:
-            print("❌ DATABASE_URL not set in environment variables.")
+            logging.error("❌ DATABASE_URL not set in environment variables.")
             return False
         conn = psycopg2.connect(DB_URL)
         cursor = conn.cursor()
         cursor.execute("DELETE FROM reminders WHERE user_id = %s", (user_id,))
         conn.commit()
-        print(f"✅ All reminders deleted for user {user_id}")
+        logging.info(f"✅ All reminders deleted for user {user_id}")
         return True
     except Exception as e:
-        print(f"❌ Error deleting reminders for user {user_id}: {e}")
+        logging.error(f"❌ Error deleting reminders for user {user_id}: {e}")
         return False
     finally:
         if conn is not None:
             conn.close()
-            print(f"🔒 Database connection closed for delete_all_reminders user {user_id}")
+            logging.info(f"🔒 Database connection closed for delete_all_reminders user {user_id}")
 
 def get_current_reminders(user_id: str) -> list:
     """Retrieve all active reminders for a user."""
     conn = None
     try:
         if not DB_URL:
-            print("❌ DATABASE_URL not set in environment variables.")
+            logging.error("❌ DATABASE_URL not set in environment variables.")
             return []
         conn = psycopg2.connect(DB_URL)
         cursor = conn.cursor()
@@ -115,12 +119,12 @@ def get_current_reminders(user_id: str) -> list:
             })
         return result
     except Exception as e:
-        print(f"❌ Error retrieving reminders for user {user_id}: {e}")
+        logging.error(f"❌ Error retrieving reminders for user {user_id}: {e}")
         return []
     finally:
         if conn is not None:
             conn.close()
-            print(f"🔒 Database connection closed for get_current_reminders user {user_id}")
+            logging.info(f"🔒 Database connection closed for get_current_reminders user {user_id}")
 
 def parse_time_arabic(text: str) -> Optional[datetime]:
     """Parse Arabic time expressions like 'بعد ساعة' or 'بعد 30 دقيقة' to a datetime object (UTC+3)."""
@@ -182,9 +186,9 @@ def parse_duration_to_seconds(text: str) -> int:
             total_seconds += value * multiplier
             parts.append(f"{value} {match.group(2)}")
     if parts:
-        print(f"🕒 Parsed duration '{text}' as {', '.join(parts)} = {total_seconds} seconds")
+        logging.info(f"🕒 Parsed duration '{text}' as {', '.join(parts)} = {total_seconds} seconds")
     else:
-        print(f"⚠️ Could not parse duration '{text}'")
+        logging.info(f"⚠️ Could not parse duration '{text}'")
     return total_seconds
 
 def parse_interval_days(text: str) -> int:
@@ -198,7 +202,7 @@ def parse_interval_days(text: str) -> int:
         match = re.search(pattern, text)
         if match:
             days = func(match)
-            print(f"🔁 Parsed interval '{text}' as {days} days")
+            logging.info(f"🔁 Parsed interval '{text}' as {days} days")
             return days
     return 0  # Default to 0 (no repeat) if no valid interval is found
 
@@ -209,8 +213,35 @@ def handle(chat_id: str, message_text: str) -> Dict[str, str]:
     """
     user_id = chat_id
     response = {"text": "لم أفهم طلبك. حاول مرة أخرى.", "keyboard": ""}
+    
+    # جلب بيانات الجلسة (قد تكون None)
     session_data = get_session(user_id)
+    if session_data is None:
+        session_data = {}  # إذا كانت None، نبدأ بقاموس فارغ
+        set_session(user_id, session_data)  # تهيئة جلسة جديدة إذا لم تكن موجودة
+    
     current_state = session_data.get("state", "")
+
+    # التعامل مع العودة إلى القائمة السابقة باستخدام "00"
+    if message_text == "00":
+        if current_state == "awaiting_reminder_time":
+            session_data["state"] = "awaiting_reminder_category"
+            set_session(user_id, session_data)
+            categories = get_categories()
+            keyboard = "||".join([f"{cat['emoji']} {cat['name']}" for cat in categories])
+            response = {"text": "اختر نوع التذكير:", "keyboard": keyboard}
+        elif current_state == "awaiting_reminder_message":
+            session_data["state"] = "awaiting_reminder_time"
+            set_session(user_id, session_data)
+            reminder_type = session_data.get("reminder_type", "غير محدد")
+            response = {"text": f"متى تريد أن أذكرك بـ '{reminder_type}'؟\n(مثال: بعد ساعة، اليوم الساعة 8 مساءً، غدا الساعة 2 ظهرًا)", "keyboard": ""}
+        elif current_state == "awaiting_reminder_interval":
+            session_data["state"] = "awaiting_reminder_message"
+            set_session(user_id, session_data)
+            response = {"text": "هل تريد إضافة رسالة مخصصة للتذكير؟ إذا لا، اكتب 'لا' أو 'تخطي'.", "keyboard": ""}
+        else:
+            response = {"text": "أنت بالفعل في القائمة الرئيسية. اكتب 'تذكير' لإضافة تذكير جديد.", "keyboard": ""}
+        return response
 
     if "تذكير" in message_text or "تذكّرني" in message_text:
         session_data["state"] = "awaiting_reminder_category"
