@@ -1,45 +1,33 @@
 import psycopg2
 import os
 import logging
+from .db_pool import pool
+from dotenv import load_dotenv
 
-# تهيئة السجل (Logging)
+load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-# الحصول على DATABASE_URL من متغيرات البيئة
-DB_URL = os.getenv("DATABASE_URL")
-
 def init_db_and_insert_data():
-    """
-    تهيئة قاعدة البيانات وإدخال بيانات الصيدليات الافتراضية.
-    يتم إنشاء جدول categories إن لم يكن موجودًا، وحذف البيانات القديمة، ثم إدخال بيانات جديدة.
-    """
-    if not DB_URL:
+    if not pool:
         logging.error("❌ DATABASE_URL not set in environment variables.")
         return
-    
+    conn = pool.getconn()
     try:
-        conn = psycopg2.connect(DB_URL)
         c = conn.cursor()
-
-        # إنشاء جدول categories إن لم يكن موجودًا
         c.execute('''
             CREATE TABLE IF NOT EXISTS categories (
                 id SERIAL PRIMARY KEY,
                 code TEXT UNIQUE NOT NULL,
                 name TEXT NOT NULL,
                 description TEXT,
-                morning_start_time TEXT,
-                morning_end_time TEXT,
-                evening_start_time TEXT,
-                evening_end_time TEXT,
+                morning_start_time TIME,
+                morning_end_time TIME,
+                evening_start_time TIME,
+                evening_end_time TIME,
                 emoji TEXT DEFAULT '💊'
             )
         ''')
-
-        # حذف جميع البيانات القديمة لضمان تحديث البيانات
         c.execute("DELETE FROM categories")
-
-        # بيانات الصيدليات الافتراضية
         data = [
             (
                 "صيدلية١", "صيدلية ركن أطلس (القرين)", 
@@ -51,50 +39,37 @@ def init_db_and_insert_data():
                 "📞 0500000000\n📍 الموقع: https://maps.app.goo.gl/test",
                 "08:30", "12:30", "16:30", "23:30", "💊"
             ),
-            (
-                "موعد", "موعد", "موعد زيارة أو مناسبة", None, None, None, None, "🩺"
-            ),
-            (
-                "دواء", "دواء", "تذكير بتناول الدواء", None, None, None, None, "💊"
-            ),
-            (
-                "تمرين", "تمرين", "تذكير بممارسة التمارين", None, None, None, None, "🏋️"
-            ),
-            (
-                "اجتماع", "اجتماع", "تذكير باجتماع مهم", None, None, None, None, "🤝"
-            ),
-            (
-                "فاتورة", "فاتورة", "تذكير بدفع فاتورة", None, None, None, None, "💳"
-            )
+            ("موعد", "موعد مستشفى أو مناسبة", "تذكير بموعد مستشفى أو مناسبة", None, None, None, None, "🩺"),
+            ("دواء", "تذكير بأكل الدواء", "تذكير بتناول الدواء", None, None, None, None, "💊"),
+            ("أذكار", "منبه أذكار الصباح والمساء", "تذكير بأذكار الصباح والمساء", None, None, None, None, "📿")
         ]
-
-        # إدخال البيانات مع تجاهل التكرارات
         c.executemany('''
             INSERT INTO categories (code, name, description, morning_start_time, morning_end_time, evening_start_time, evening_end_time, emoji)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (code) DO NOTHING
+            ON CONFLICT (code) DO UPDATE SET
+                name = EXCLUDED.name,
+                description = EXCLUDED.description,
+                morning_start_time = EXCLUDED.morning_start_time,
+                morning_end_time = EXCLUDED.morning_end_time,
+                evening_start_time = EXCLUDED.evening_start_time,
+                evening_end_time = EXCLUDED.evening_end_time,
+                emoji = EXCLUDED.emoji
         ''', data)
-
         conn.commit()
-        logging.info("✅ تم تهيئة جدول categories في قاعدة البيانات PostgreSQL وإدخال البيانات الافتراضية.")
-    except Exception as e:
-        logging.error(f"❌ خطأ أثناء تهيئة قاعدة البيانات PostgreSQL: {e}")
+        logging.info("✅ تم تهيئة جدول categories وإدخال البيانات الافتراضية.")
+    except psycopg2.DatabaseError as e:
+        logging.error(f"❌ خطأ أثناء تهيئة قاعدة البيانات: {e}")
     finally:
         if conn is not None:
-            conn.close()
-            logging.info("🔒 Database connection closed for init_db_and_insert_data")
+            pool.putconn(conn)
+            logging.info("🔒 Database connection returned to pool for init_db_and_insert_data")
 
 def get_categories():
-    """
-    جلب جميع الفئات (الصيدليات والتذكيرات) من قاعدة البيانات.
-    يُرجع قائمة بالفئات يمكن استخدامها في التطبيق.
-    """
-    if not DB_URL:
+    if not pool:
         logging.error("❌ DATABASE_URL not set in environment variables.")
         return []
-    
+    conn = pool.getconn()
     try:
-        conn = psycopg2.connect(DB_URL)
         c = conn.cursor()
         c.execute('SELECT code, name, description, morning_start_time, morning_end_time, evening_start_time, evening_end_time, emoji FROM categories')
         categories = c.fetchall()
@@ -105,21 +80,20 @@ def get_categories():
                 "code": code,
                 "name": name,
                 "description": desc,
-                "morning_start_time": m_start,
-                "morning_end_time": m_end,
-                "evening_start_time": e_start,
-                "evening_end_time": e_end,
+                "morning_start_time": str(m_start) if m_start else None,
+                "morning_end_time": str(m_end) if m_end else None,
+                "evening_start_time": str(e_start) if e_start else None,
+                "evening_end_time": str(e_end) if e_end else None,
                 "emoji": emoji if emoji else "💊"
             })
         return result
-    except Exception as e:
+    except psycopg2.DatabaseError as e:
         logging.error(f"❌ خطأ أثناء جلب الفئات: {e}")
         return []
     finally:
         if conn is not None:
-            conn.close()
-            logging.info("🔒 Database connection closed for get_categories")
+            pool.putconn(conn)
+            logging.info("🔒 Database connection returned to pool for get_categories")
 
-# استدعاء التهيئة عند تحميل الملف
 if __name__ == "__main__":
     init_db_and_insert_data()
