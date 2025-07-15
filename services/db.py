@@ -1,17 +1,17 @@
 import psycopg2
 import os
 import logging
-from .db_pool import pool
+from .db_pool import get_db_connection, close_db_connection  # استيراد الدوال الجديدة
 from dotenv import load_dotenv
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 def init_db_and_insert_data():
-    if not pool:
-        logging.error("❌ DATABASE_URL not set in environment variables.")
+    conn = get_db_connection()
+    if not conn:
+        logging.error("❌ DATABASE_URL not set in environment variables or connection failed.")
         return
-    conn = pool.getconn()
     try:
         c = conn.cursor()
         c.execute('''
@@ -60,15 +60,14 @@ def init_db_and_insert_data():
     except psycopg2.DatabaseError as e:
         logging.error(f"❌ خطأ أثناء تهيئة قاعدة البيانات: {e}")
     finally:
-        if conn is not None:
-            pool.putconn(conn)
-            logging.info("🔒 Database connection returned to pool for init_db_and_insert_data")
+        close_db_connection(conn)
+        logging.info("🔒 Database connection closed for init_db_and_insert_data")
 
 def get_categories():
-    if not pool:
-        logging.error("❌ DATABASE_URL not set in environment variables.")
+    conn = get_db_connection()
+    if not conn:
+        logging.error("❌ DATABASE_URL not set in environment variables or connection failed.")
         return []
-    conn = pool.getconn()
     try:
         c = conn.cursor()
         c.execute('SELECT code, name, description, morning_start_time, morning_end_time, evening_start_time, evening_end_time, emoji FROM categories')
@@ -91,9 +90,8 @@ def get_categories():
         logging.error(f"❌ خطأ أثناء جلب الفئات: {e}")
         return []
     finally:
-        if conn is not None:
-            pool.putconn(conn)
-            logging.info("🔒 Database connection returned to pool for get_categories")
+        close_db_connection(conn)
+        logging.info("🔒 Database connection closed for get_categories")
 
 if __name__ == "__main__":
     init_db_and_insert_data()
