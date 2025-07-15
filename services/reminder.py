@@ -135,7 +135,7 @@ def update_reminder(user_id: str, reminder_id: int, remind_at: Optional[str] = N
         if remind_at:
             updates.append("remind_at = %s")
             values.append(remind_at)
-        if message is not None:  # Allow empty string as valid input
+        if message is not None:
             updates.append("message = %s")
             values.append(message)
         if interval_days is not None:
@@ -218,7 +218,7 @@ def get_user_stats(user_id: str) -> Dict[str, int]:
 
 def parse_time_arabic(text: str) -> Optional[datetime]:
     """Parse Arabic time expressions like 'بعد ساعة' or 'بعد 30 دقيقة' to a datetime object (UTC+3)."""
-    now = datetime.now(pytz.UTC) + timedelta(hours=3)  # ضبط الوقت إلى UTC+3
+    now = datetime.now(pytz.UTC) + timedelta(hours=3)  # Adjust to UTC+3
     text = text.replace("أ", "ا").replace("إ", "ا")
 
     patterns = {
@@ -234,7 +234,7 @@ def parse_time_arabic(text: str) -> Optional[datetime]:
     for pattern, func in patterns.items():
         match = re.search(pattern, text)
         if match:
-            return func(match).replace(tzinfo=None)  # إزالة معلومات المنطقة الزمنية لتخزينها كـ Naive Datetime
+            return func(match).replace(tzinfo=None)  # Remove timezone info for naive datetime
     return None
 
 def parse_today_time(match, now):
@@ -298,7 +298,7 @@ def parse_interval_days(text: str) -> int:
             days = func(match)
             logging.info(f"🔁 Parsed interval '{text}' as {days} days")
             return days
-    return 0  # Default to 0 (no repeat) if no valid interval is found
+    return 0
 
 def get_main_menu_response():
     """Return the main menu text and keyboard."""
@@ -350,7 +350,7 @@ def handle(chat_id: str, message_text: str) -> Dict[str, str]:
     user_id = chat_id
     response = {"text": "لم أفهم طلبك. حاول مرة أخرى.", "keyboard": ""}
     
-    # جلب بيانات الجلسة (قد تكون فارغة)
+    # جلب بيانات الجلسة
     session_data = get_session(user_id)
     if session_data is None:
         session_data = {}
@@ -365,13 +365,13 @@ def handle(chat_id: str, message_text: str) -> Dict[str, str]:
         set_session(user_id, session_data)
         return get_main_menu_response()
 
-    # التعامل مع القائمة الرئيسية (عرضها عند الطلب)
+    # التعامل مع القائمة الرئيسية
     if message_text in ["0", "٠", "صفر", ".", "نقطة", "نقطه", "خدمات", "قائمة", "menu", "main menu", "العودة", "رجوع"]:
         session_data["state"] = "main_menu"
         set_session(user_id, session_data)
         return get_main_menu_response()
     
-    # التعامل مع العودة إلى الخطوة السابقة باستخدام "00"
+    # التعامل مع العودة إلى الخطوة السابقة
     if message_text == "00":
         if current_state == "reminder_menu":
             session_data["state"] = "main_menu"
@@ -420,7 +420,7 @@ def handle(chat_id: str, message_text: str) -> Dict[str, str]:
             set_session(user_id, session_data)
             response = {"text": "📝 أدخل رسالة مخصصة جديدة للتذكير (اختياري، أرسل 'تخطي' للاحتفاظ بالرسالة الحالية):\nمثل: لا تنسَ زيارة الطبيب\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)", "keyboard": ""}
         elif current_state.startswith("sub_service_"):
-            session_data["state"] = "main_menu"  # مؤقتًا حتى نطور القوائم الفرعية
+            session_data["state"] = "main_menu"
             set_session(user_id, session_data)
             return get_main_menu_response()
         elif current_state.startswith("service_"):
@@ -442,7 +442,6 @@ def handle(chat_id: str, message_text: str) -> Dict[str, str]:
             "16": "عمال", "17": "محلات مهنية", "18": "ذبائح وملاحم", "19": "نقل مدرسي ومشاوير", "20": "منبه"
         }
         selected_service = None
-        # تحديد الخدمة بناءً على الرقم أو الاسم
         if message_text in service_mapping:
             selected_service = service_mapping[message_text]
         else:
@@ -467,138 +466,4 @@ def handle(chat_id: str, message_text: str) -> Dict[str, str]:
                     response_text += f"{i}. {pharmacy['name']}\n"
                     keyboard_items.append(f"{pharmacy['name']}")
                 response_text += "\nللرجوع إلى القائمة الرئيسية اضغط 0"
-                keyboard = "||".join(keyboard_items) + "||0"
-                response = {"text": response_text, "keyboard": keyboard}
-            else:
-                session_data["state"] = f"service_{selected_service}"
-                set_session(user_id, session_data)
-                response_text = f"📋 قائمة {selected_service}:\n\nهذه الخدمة قيد التطوير حاليًا. سنقوم بإضافة التفاصيل قريبًا.\n\n"
-                response_text += "للرجوع إلى القائمة الرئيسية اضغط 0"
-                response = {"text": response_text, "keyboard": "0"}
-            return response
-
-    # التعامل مع اختيار صيدلية معينة
-    if current_state == "service_صيدلية":
-        categories = get_categories()
-        pharmacies = [cat for cat in categories if "صيدلية" in cat["code"]]
-        selected_pharmacy = None
-        for i, pharmacy in enumerate(pharmacies, 1):
-            if message_text == str(i) or pharmacy["name"] in message_text:
-                selected_pharmacy = pharmacy
-                break
-        if selected_pharmacy:
-            response_text = f"🏥 معلومات عن {selected_pharmacy['name']}:\n\n"
-            if selected_pharmacy["description"]:
-                response_text += f"{selected_pharmacy['description']}\n\n"
-            if selected_pharmacy["morning_start_time"]:
-                response_text += f"⏰ مواعيد العمل:\n"
-                response_text += f"الفترة الصباحية: {selected_pharmacy['morning_start_time']} - {selected_pharmacy['morning_end_time']}\n"
-                response_text += f"الفترة المسائية: {selected_pharmacy['evening_start_time']} - {selected_pharmacy['evening_end_time']}\n"
-            response_text += "\nللرجوع إلى القائمة الرئيسية اضغط 0"
-            response = {"text": response_text, "keyboard": "0"}
-            session_data["state"] = "main_menu"
-            set_session(user_id, session_data)
-            return response
-
-    # التعامل مع قائمة المنبه
-    if current_state == "reminder_menu":
-        if message_text == "1":
-            session_data["state"] = "awaiting_reminder_date"
-            session_data["reminder_type"] = "موعد"
-            session_data["interval_days"] = 0
-            set_session(user_id, session_data)
-            response = {"text": "📅 أرسل تاريخ الموعد بالميلادي فقط:\nمثل: 17-08-2025\nوسيتم تذكيرك قبل الموعد بيوم واحد\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)", "keyboard": ""}
-        elif message_text == "2":
-            session_data["state"] = "awaiting_reminder_date"
-            session_data["reminder_type"] = "يومي"
-            session_data["interval_days"] = 1
-            set_session(user_id, session_data)
-            response = {"text": "📅 أرسل تاريخ بدء التذكير اليومي بالميلادي:\nمثل: 17-08-2025\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)", "keyboard": ""}
-        elif message_text == "3":
-            session_data["state"] = "awaiting_reminder_date"
-            session_data["reminder_type"] = "أسبوعي"
-            session_data["interval_days"] = 7
-            set_session(user_id, session_data)
-            response = {"text": "📅 أرسل تاريخ بدء التذكير الأسبوعي بالميلادي:\nمثل: 17-08-2025\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)", "keyboard": ""}
-        elif message_text == "4":
-            reminders = get_current_reminders(user_id)
-            if not reminders:
-                response = {"text": "📭 لا توجد أي تنبيهات نشطة حاليًا.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)", "keyboard": ""}
-            else:
-                response_text = "🔔 تنبيهاتك النشطة الحالية:\n\n"
-                for r in reminders:
-                    interval_text = f" (يتكرر كل {r['interval_days']} يوم)" if r['interval_days'] > 0 else ""
-                    response_text += f"{r['id']} - {r['type']}{interval_text} بتاريخ {r['remind_at']}\n"
-                response_text += "\nاختر خيارًا:\n- أرسل 'حذف <رقم>' لحذف تذكير (مثل: حذف 1)\n- أرسل 'تعديل <رقم>' لتعديل تذكير (مثل: تعديل 2)\n"
-                response_text += "↩️ للرجوع (00) | 🏠 رئيسية (0)"
-                response = {"text": response_text, "keyboard": ""}
-        elif message_text == "5":
-            stats = get_user_stats(user_id)
-            response_text = f"📊 *إحصائياتك الشخصية:*\n- التذكيرات النشطة: {stats['active_count']}\n- التذكيرات المرسلة: {stats['sent_count']}\n\n"
-            response_text += "↩️ للرجوع (00) | 🏠 رئيسية (0)"
-            response = {"text": response_text, "keyboard": ""}
-        elif "حذف" in message_text.lower():
-            if delete_all_reminders(user_id):
-                response = {"text": "✅ تم حذف جميع التذكيرات الخاصة بك.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)", "keyboard": ""}
-            else:
-                response = {"text": "❌ حدث خطأ أثناء حذف التذكيرات. حاول مرة أخرى.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)", "keyboard": ""}
-        elif message_text.lower().startswith("حذف "):
-            try:
-                reminder_id = int(message_text.split()[1])
-                if delete_reminder(user_id, reminder_id):
-                    response = {"text": f"✅ تم حذف التذكير رقم {reminder_id} بنجاح.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)", "keyboard": ""}
-                else:
-                    response = {"text": f"❌ التذكير رقم {reminder_id} غير موجود أو لا يخصك.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)", "keyboard": ""}
-            except (IndexError, ValueError):
-                response = {"text": "❌ صيغة غير صحيحة. أرسل 'حذف <رقم>' مثل: حذف 1\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)", "keyboard": ""}
-        elif message_text.lower().startswith("تعديل "):
-            try:
-                reminder_id = int(message_text.split()[1])
-                session_data["state"] = "awaiting_edit_reminder_date"
-                session_data["reminder_id"] = reminder_id
-                set_session(user_id, session_data)
-                response = {"text": "📅 أدخل تاريخ جديد للتذكير بالميلادي (أو 'تخطي' للاحتفاظ بالتاريخ الحالي):\nمثل: 17-08-2025\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)", "keyboard": ""}
-            except (IndexError, ValueError):
-                response = {"text": "❌ صيغة غير صحيحة. أرسل 'تعديل <رقم>' مثل: تعديل 2\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)", "keyboard": ""}
-        else:
-            response = {"text": "↩️ اختر رقم صحيح أو أرسل 'حذف' لإزالة جميع التنبيهات.\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)", "keyboard": ""}
-        return response
-
-    # التعامل مع خطوات إعداد التذكير (منبه)
-    if current_state == "awaiting_reminder_date":
-        date_str = parse_date(message_text)
-        if date_str:
-            session_data["date"] = date_str
-            session_data["state"] = "awaiting_reminder_time"
-            set_session(user_id, session_data)
-            response = {"text": "⏰ أدخل وقت التذكير بالصيغة HH:MM (24 ساعة):\nمثل: 15:30\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)", "keyboard": ""}
-        else:
-            response = {"text": "❗️ صيغة غير صحيحة. أرسل التاريخ مثل: 17-08-2025\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)", "keyboard": ""}
-    elif current_state == "awaiting_reminder_time":
-        time_str = parse_time(message_text)
-        if time_str:
-            session_data["time"] = time_str
-            session_data["state"] = "awaiting_reminder_message"
-            set_session(user_id, session_data)
-            response = {"text": "📝 هل تريد إضافة رسالة مخصصة للتذكير؟ إذا لا، اكتب 'لا' أو 'تخطي'.", "keyboard": ""}
-        else:
-            response = {"text": "❗️ صيغة غير صحيحة. أرسل الوقت مثل: 15:30 أو 'تخطي'\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)", "keyboard": ""}
-    elif current_state == "awaiting_reminder_message":
-        session_data["message"] = None if message_text in ["لا", "تخطي", "no", "skip"] else message_text
-        session_data["state"] = "awaiting_reminder_interval"
-        set_session(user_id, session_data)
-        response = {"text": "🔁 هل تريد تكرار التذكير؟ (مثال: كل يوم، كل 3 أيام، كل أسبوع)\nإذا لا، اكتب 'لا'.", "keyboard": ""}
-    elif current_state == "awaiting_reminder_interval":
-        interval_days = 0 if message_text in ["لا", "no", "تخطي", "skip"] else parse_interval_days(message_text)
-        reminder_type = session_data.get("reminder_type", "غير محدد")
-        date_str = session_data.get("date", "2023-01-01")
-        time_str = session_data.get("time", "00:00")
-        remind_at = f"{date_str} {time_str}:00"
-        if reminder_type == "موعد":
-            date_obj = datetime.strptime(date_str, "%Y-%m-%d")
-            remind_at = (date_obj - timedelta(days=1)).strftime("%Y-%m-%d") + f" {time_str}:00"
-        message = session_data.get("message")
-        if save_reminder(user_id, reminder_type, message, remind_at, interval_days or session_data.get("interval_days", 0)):
-            session_data["state"] = "reminder_menu"
-            set_session(user_id, session_data)
-            interval_text = f" (يتكرر كل {interval_days or session_data.get('interval_days', 0)} يوم)" if
+                keyboard = "||".
