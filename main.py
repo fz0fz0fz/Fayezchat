@@ -4,6 +4,7 @@ import requests
 import logging
 from services import handle_reminder, init_reminder_db, init_session_db
 from send_reminders import send_due_reminders
+from services.db_pool import get_db_connection, close_db_connection  # استيراد الدوال الجديدة
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -27,7 +28,14 @@ def webhook():
             logging.error("❌ Missing message or user_id in payload")
             return jsonify({"status": "error", "message": "Missing message or user_id"}), 400
         
-        response = handle_reminder(user_id, message)
+        # استخدام الاتصال الجديد
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({"status": "error", "message": "Failed to connect to database"}), 500
+        
+        response = handle_reminder(user_id, message, conn)  # تمرير الاتصال إذا كان مطلوبًا
+        close_db_connection(conn)
+        
         text = response.get("text", "حدث خطأ، حاول مرة أخرى.")
         keyboard = response.get("keyboard", "")
         
@@ -54,7 +62,12 @@ def webhook():
 @app.route("/send_reminders", methods=["GET", "POST"])
 def send_reminders_endpoint():
     try:
-        result = send_due_reminders()
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({"status": "error", "message": "Failed to connect to database"}), 500
+        
+        result = send_due_reminders(conn)  # تمرير الاتصال
+        close_db_connection(conn)
         logging.info(f"📤 تم فحص التذكيرات وإرسالها: {result}")
         return jsonify({"status": "success", "details": result}), 200
     except Exception as e:
@@ -62,7 +75,12 @@ def send_reminders_endpoint():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == "__main__":
-    init_reminder_db()
-    init_session_db()
+    conn = get_db_connection()
+    if conn:
+        init_reminder_db(conn)
+        init_session_db(conn)
+        close_db_connection(conn)
+    else:
+        logging.error("❌ Failed to initialize databases due to connection issue")
     port = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
