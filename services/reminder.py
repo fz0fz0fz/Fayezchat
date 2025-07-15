@@ -3,7 +3,7 @@ import psycopg2
 import os
 from datetime import datetime, timedelta
 import pytz
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from services.session import get_session, set_session
 from services.db import get_categories
 import logging
@@ -135,7 +135,7 @@ def update_reminder(user_id: str, reminder_id: int, remind_at: Optional[str] = N
         if remind_at:
             updates.append("remind_at = %s")
             values.append(remind_at)
-        if message is not None:  # Allow empty string as valid input
+        if message is not None:
             updates.append("message = %s")
             values.append(message)
         if interval_days is not None:
@@ -163,7 +163,7 @@ def update_reminder(user_id: str, reminder_id: int, remind_at: Optional[str] = N
             conn.close()
             logging.info(f"🔒 Database connection closed for update_reminder user {user_id}")
 
-def get_current_reminders(user_id: str) -> list:
+def get_current_reminders(user_id: str) -> List[Dict]:
     """Retrieve all active reminders for a user."""
     conn = None
     try:
@@ -216,48 +216,6 @@ def get_user_stats(user_id: str) -> Dict[str, int]:
             conn.close()
             logging.info(f"🔒 Database connection closed for get_user_stats user {user_id}")
 
-def parse_time_arabic(text: str) -> Optional[datetime]:
-    """Parse Arabic time expressions like 'بعد ساعة' or 'بعد 30 دقيقة' to a datetime object (UTC+3)."""
-    now = datetime.now(pytz.UTC) + timedelta(hours=3)  # ضبط الوقت إلى UTC+3
-    text = text.replace("أ", "ا").replace("إ", "ا")
-
-    patterns = {
-        r"بعد\s*(\d+)\s*(دقيقة|دقيقه|دقائق|minutes|minute)": lambda x: now + timedelta(minutes=int(x.group(1))),
-        r"بعد\s*(\d+)\s*(ساعة|ساعه|ساعات|hours|hour)": lambda x: now + timedelta(hours=int(x.group(1))),
-        r"بعد\s*(\d+)\s*(يوم|أيام|days|day)": lambda x: now + timedelta(days=int(x.group(1))),
-        r"بعد\s*(\d+)\s*(اسبوع|أسابيع|weeks|week)": lambda x: now + timedelta(weeks=int(x.group(1))),
-        r"اليوم\s*الساعة\s*(\d{1,2})(?::|\s*)(\d{2})?\s*(صباحا|صباحًا|مساءً|مساءا)?": lambda x: parse_today_time(x, now),
-        r"غدا\s*الساعة\s*(\d{1,2})(?::|\s*)(\d{2})?\s*(صباحا|صباحًا|مساءً|مساءا)?": lambda x: parse_tomorrow_time(x, now),
-    }
-
-    text = re.sub(r"[\u200c\u200d]", "", text)
-    for pattern, func in patterns.items():
-        match = re.search(pattern, text)
-        if match:
-            return func(match).replace(tzinfo=None)  # إزالة معلومات المنطقة الزمنية لتخزينها كـ Naive Datetime
-    return None
-
-def parse_today_time(match, now):
-    """Parse time for today like 'اليوم الساعة 8 مساءً'."""
-    hour = int(match.group(1))
-    minute = int(match.group(2) or 0)
-    period = match.group(3) or ""
-    if "مساء" in period and hour < 12:
-        hour += 12
-    today = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-    return today
-
-def parse_tomorrow_time(match, now):
-    """Parse time for tomorrow like 'غدا الساعة 8 مساءً'."""
-    hour = int(match.group(1))
-    minute = int(match.group(2) or 0)
-    period = match.group(3) or ""
-    if "مساء" in period and hour < 12:
-        hour += 12
-    tomorrow = now + timedelta(days=1)
-    tomorrow = tomorrow.replace(hour=hour, minute=minute, second=0, microsecond=0)
-    return tomorrow
-
 def parse_date(text: str) -> Optional[str]:
     """Parse date input in formats like '17-08-2025' or '17/08/2025'."""
     try:
@@ -300,7 +258,7 @@ def parse_interval_days(text: str) -> int:
             return days
     return 0  # Default to 0 (no repeat) if no valid interval is found
 
-def get_main_menu_response():
+def get_main_menu_response() -> Dict[str, str]:
     """Return the main menu text and keyboard."""
     main_menu_text = "*_أهلا بك في دليل خدمات القرين يمكنك الإستعلام عن الخدمات التالية:_*\n\n"
     main_menu_text += "1️⃣ حكومي🏢\n"
@@ -328,7 +286,7 @@ def get_main_menu_response():
     keyboard = "حكومي||صيدلية||بقالة||خضار||رحلات||حلا||أسر منتجة||مطاعم||قرطاسية||محلات||شالية||وايت||شيول||دفان||مواد بناء وعوازل||عمال||محلات مهنية||ذبائح وملاحم||نقل مدرسي ومشاوير||منبه"
     return {"text": main_menu_text, "keyboard": keyboard}
 
-def get_reminder_menu_response():
+def get_reminder_menu_response() -> Dict[str, str]:
     """Return the reminder menu text and keyboard."""
     reminder_menu_text = "⏰ *منبه*\n\n"
     reminder_menu_text += "اختر نوع التذكير الذي تريده:\n\n"
@@ -341,16 +299,6 @@ def get_reminder_menu_response():
     reminder_menu_text += "↩️ للرجوع (00) | 🏠 رئيسية (0)"
     keyboard = "1||2||3||4||5"
     return {"text": reminder_menu_text, "keyboard": keyboard}
-
-def get_pharmacy_list():
-    """Return the list of pharmacies with details."""
-    response_text = "📋 قائمة الصيدليات المتوفرة في القرين:\n\n"
-    response_text += "1- *صيدلية ركن أطلس (القرين)*\n"
-    response_text += "   📞 0556945390\n   📱 واتس اب\n   📍 الموقع: https://maps.app.goo.gl/KGDcPGwvuym1E8YFA\n   🚚 خدمة التوصيل: نعم\n   ⏰ مواعيد العمل: صباحًا (8:00-12:00)، مساءً (4:00-11:00)\n\n"
-    response_text += "2- *صيدلية دواء القصيم*\n"
-    response_text += "   📞 0500000000\n   📍 الموقع: https://maps.app.goo.gl/test\n   ⏰ مواعيد العمل: صباحًا (8:30-12:30)، مساءً (4:30-11:30)\n\n"
-    response_text += "للرجوع إلى القائمة الرئيسية اضغط 0"
-    return {"text": response_text, "keyboard": "0"}
 
 def handle(chat_id: str, message_text: str) -> Dict[str, str]:
     """
@@ -429,6 +377,10 @@ def handle(chat_id: str, message_text: str) -> Dict[str, str]:
             session_data["state"] = "awaiting_edit_reminder_message"
             set_session(user_id, session_data)
             response = {"text": "📝 أدخل رسالة مخصصة جديدة للتذكير (اختياري، أرسل 'تخطي' للاحتفاظ بالرسالة الحالية):\nمثل: لا تنسَ زيارة الطبيب\n\n↩️ للرجوع (00) | 🏠 رئيسية (0)", "keyboard": ""}
+        elif current_state.startswith("sub_service_"):
+            session_data["state"] = "main_menu"
+            set_session(user_id, session_data)
+            return get_main_menu_response()
         elif current_state.startswith("service_"):
             session_data["state"] = "main_menu"
             set_session(user_id, session_data)
@@ -465,9 +417,16 @@ def handle(chat_id: str, message_text: str) -> Dict[str, str]:
             elif selected_service == "صيدلية":
                 session_data["state"] = f"service_{selected_service}"
                 set_session(user_id, session_data)
-                return get_pharmacy_list()
+                categories = get_categories()
+                pharmacies = [cat for cat in categories if "صيدلية" in str(cat.get("code", ""))]
+                response_text = f"🏥 قائمة الصيدليات:\nاختر صيدلية للحصول على معلومات:\n"
+                keyboard_items = []
+                for i, pharmacy in enumerate(pharmacies, 1):
+                    response_text += f"{i}. {pharmacy.get('name', 'صيدلية غير معروفة')}\n"
+                    keyboard_items.append(f"{pharmacy.get('name', str(i))}")
+                response_text += "\nللرجوع إلى القائمة الرئيسية اضغط 0"
+                keyboard = "||".join(keyboard_items) + "||0" if keyboard_items else "0"
+                response = {"text": response_text, "keyboard": keyboard}
             else:
                 session_data["state"] = f"service_{selected_service}"
-                set_session(user_id, session_data)
-                response_text = f"📋 قائمة {selected_service}:\n\nهذه الخدمة قيد التطوير حاليًا. سنقوم بإضافة التفاصيل قريبًا.\n\n"
-                response_text += "للرجوع إلى القائمة الرئيسية اضغط
+                set
