@@ -208,7 +208,7 @@ def parse_interval_days(text: str) -> int:
 
 def handle(chat_id: str, message_text: str) -> Dict[str, str]:
     """
-    Handle reminder-related commands in the chat.
+    Handle reminder-related commands and main menu in the chat.
     Returns a dictionary with response message and optional custom keyboard.
     """
     user_id = chat_id
@@ -222,7 +222,20 @@ def handle(chat_id: str, message_text: str) -> Dict[str, str]:
     
     current_state = session_data.get("state", "")
 
-    # التعامل مع العودة إلى القائمة السابقة باستخدام "00"
+    # التعامل مع القائمة الرئيسية
+    if message_text in ["0", "القائمة", "خدمات", "العودة", "رجوع", "menu", "main menu"]:
+        session_data["state"] = "main_menu"
+        set_session(user_id, session_data)
+        main_menu_text = "📋 القائمة الرئيسية:\nاختر أحد الخيارات التالية:\n\n"
+        main_menu_text += "1️⃣ حكومي - للخدمات الحكومية\n"
+        main_menu_text += "2️⃣ منبه - لإعداد تذكيرات ومنبهات\n"
+        main_menu_text += "3️⃣ صيدليات - للحصول على معلومات عن الصيدليات\n\n"
+        main_menu_text += "اكتب الرقم أو اسم الخدمة للاختيار."
+        keyboard = "حكومي||منبه||صيدليات"
+        response = {"text": main_menu_text, "keyboard": keyboard}
+        return response
+    
+    # التعامل مع العودة إلى الخطوة السابقة باستخدام "00" ضمن عملية التذكير
     if message_text == "00":
         if current_state == "awaiting_reminder_time":
             session_data["state"] = "awaiting_reminder_category"
@@ -239,10 +252,79 @@ def handle(chat_id: str, message_text: str) -> Dict[str, str]:
             session_data["state"] = "awaiting_reminder_message"
             set_session(user_id, session_data)
             response = {"text": "هل تريد إضافة رسالة مخصصة للتذكير؟ إذا لا، اكتب 'لا' أو 'تخطي'.", "keyboard": ""}
+        elif current_state in ["main_menu", "awaiting_government_service", "awaiting_pharmacy_selection"]:
+            session_data["state"] = "main_menu"
+            set_session(user_id, session_data)
+            main_menu_text = "📋 القائمة الرئيسية:\nاختر أحد الخيارات التالية:\n\n"
+            main_menu_text += "1️⃣ حكومي - للخدمات الحكومية\n"
+            main_menu_text += "2️⃣ منبه - لإعداد تذكيرات ومنبهات\n"
+            main_menu_text += "3️⃣ صيدليات - للحصول على معلومات عن الصيدليات\n\n"
+            main_menu_text += "اكتب الرقم أو اسم الخدمة للاختيار."
+            keyboard = "حكومي||منبه||صيدليات"
+            response = {"text": main_menu_text, "keyboard": keyboard}
         else:
-            response = {"text": "أنت بالفعل في القائمة الرئيسية. اكتب 'تذكير' لإضافة تذكير جديد.", "keyboard": ""}
+            response = {"text": "أنت بالفعل في القائمة الرئيسية. اكتب 'القائمة' أو '0' لعرض الخيارات.", "keyboard": ""}
         return response
 
+    # التعامل مع اختيارات القائمة الرئيسية
+    if current_state == "main_menu" or message_text in ["1", "2", "3", "حكومي", "منبه", "صيدليات"]:
+        if message_text in ["1", "حكومي"] or "حكومي" in message_text.lower():
+            session_data["state"] = "awaiting_government_service"
+            set_session(user_id, session_data)
+            response = {"text": "📋 الخدمات الحكومية:\nاختر خدمة:\n1. استعلام عن معاملة\n2. موعد في الأحوال المدنية\nاكتب الرقم أو اسم الخدمة.", "keyboard": "استعلام عن معاملة||موعد في الأحوال المدنية||العودة"}
+        elif message_text in ["2", "منبه"] or "منبه" in message_text.lower():
+            session_data["state"] = "awaiting_reminder_category"
+            set_session(user_id, session_data)
+            categories = get_categories()
+            keyboard = "||".join([f"{cat['emoji']} {cat['name']}" for cat in categories])
+            response = {"text": "اختر نوع التذكير:", "keyboard": keyboard}
+        elif message_text in ["3", "صيدليات"] or "صيدليات" in message_text.lower():
+            session_data["state"] = "awaiting_pharmacy_selection"
+            set_session(user_id, session_data)
+            categories = get_categories()
+            pharmacies = [cat for cat in categories if "صيدلية" in cat["name"]]
+            response_text = "🏥 قائمة الصيدليات:\nاختر صيدلية للحصول على معلومات:\n"
+            keyboard_items = []
+            for i, pharmacy in enumerate(pharmacies, 1):
+                response_text += f"{i}. {pharmacy['name']}\n"
+                keyboard_items.append(f"{pharmacy['name']}")
+            response_text += "\nاكتب الرقم أو اسم الصيدلية."
+            keyboard = "||".join(keyboard_items) + "||العودة"
+            response = {"text": response_text, "keyboard": keyboard}
+        return response
+
+    # التعامل مع الخدمات الحكومية
+    if current_state == "awaiting_government_service":
+        if message_text in ["1", "استعلام عن معاملة"] or "استعلام" in message_text.lower():
+            response = {"text": "📄 أدخل رقم المعاملة للاستعلام:", "keyboard": ""}
+            session_data["state"] = "awaiting_transaction_number"
+            set_session(user_id, session_data)
+        elif message_text in ["2", "موعد في الأحوال المدنية"] or "موعد" in message_text.lower() or "أحوال" in message_text.lower():
+            response = {"text": "📅 يمكنك حجز موعد في الأحوال المدنية عبر منصة أبشر. هل تحتاج إلى مساعدة في الخطوات؟ (نعم/لا)", "keyboard": "نعم||لا||العودة"}
+            session_data["state"] = "awaiting_civil_affairs_help"
+            set_session(user_id, session_data)
+        return response
+
+    # التعامل مع اختيار الصيدليات
+    if current_state == "awaiting_pharmacy_selection":
+        categories = get_categories()
+        pharmacies = [cat for cat in categories if "صيدلية" in cat["name"]]
+        selected_pharmacy = next((p for p in pharmacies if p["name"] in message_text or message_text.strip() in [str(i+1) for i in range(len(pharmacies))]), None)
+        if selected_pharmacy:
+            response_text = f"🏥 معلومات عن {selected_pharmacy['name']}:\n\n"
+            if selected_pharmacy["description"]:
+                response_text += f"{selected_pharmacy['description']}\n\n"
+            if selected_pharmacy["morning_start_time"]:
+                response_text += f"⏰ مواعيد العمل:\n"
+                response_text += f"الفترة الصباحية: {selected_pharmacy['morning_start_time']} - {selected_pharmacy['morning_end_time']}\n"
+                response_text += f"الفترة المسائية: {selected_pharmacy['evening_start_time']} - {selected_pharmacy['evening_end_time']}\n"
+            response_text += "\nاكتب 'العودة' للرجوع إلى القائمة الرئيسية."
+            response = {"text": response_text, "keyboard": "العودة"}
+            session_data["state"] = "main_menu"
+            set_session(user_id, session_data)
+        return response
+
+    # التعامل مع خطوات التذكير
     if "تذكير" in message_text or "تذكّرني" in message_text:
         session_data["state"] = "awaiting_reminder_category"
         set_session(user_id, session_data)
