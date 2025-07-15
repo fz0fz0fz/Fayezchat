@@ -5,10 +5,8 @@ import requests
 import logging
 import time
 
-# تهيئة السجل (Logging)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-# بيانات UltraMsg من متغيرات البيئة
 INSTANCE_ID = os.getenv("ULTRAMSG_INSTANCE_ID")
 TOKEN = os.getenv("ULTRAMSG_TOKEN")
 
@@ -18,33 +16,26 @@ if not INSTANCE_ID or not TOKEN:
 else:
     API_URL = f"https://api.ultramsg.com/{INSTANCE_ID}/messages/chat"
 
-# الحصول على DATABASE_URL من متغيرات البيئة
 DB_URL = os.getenv("DATABASE_URL")
 
 def send_due_reminders():
-    """
-    Check for due reminders in the database and send messages to users.
-    Returns a summary of sent reminders.
-    """
     if not API_URL:
         return {"sent_count": 0, "error": "UltraMsg credentials not set."}
 
-    # الحصول على الوقت الحالي بتوقيت UTC وإضافة 3 ساعات (UTC+3)
-    now_utc = datetime.utcnow()  # الوقت بتوقيت UTC
-    now_dt = now_utc + timedelta(hours=3)  # ضبط إلى UTC+3 (مثل توقيت السعودية)
+    now_utc = datetime.utcnow()
+    now_dt = now_utc + timedelta(hours=3)
     now = now_dt.strftime("%Y-%m-%d %H:%M:%S")
     logging.info(f"🕒 Current time adjusted to UTC+3: {now}")
     logging.info(f"🕒 UTC time for reference: {now_utc.strftime('%Y-%m-%d %H:%M:%S')}")
     
     sent_count = 0
     errors = []
-    processed_reminders = set()  # لتتبع التذكيرات التي تم معالجتها في هذه الجلسة
+    processed_reminders = set()
 
     try:
         conn = psycopg2.connect(DB_URL)
         c = conn.cursor()
 
-        # جلب التذكيرات المستحقة (remind_at أقل من أو يساوي الوقت الحالي المُعدل)
         c.execute("""
             SELECT id, user_id, reminder_type, message, remind_at, interval_days
             FROM reminders
@@ -56,7 +47,6 @@ def send_due_reminders():
 
         if not reminders:
             logging.info(f"✅ No due reminders found at {now}")
-            # للتحقق من التذكيرات النشطة الموجودة في قاعدة البيانات
             c.execute("SELECT id, user_id, reminder_type, remind_at, interval_days FROM reminders WHERE active = TRUE")
             all_reminders = c.fetchall()
             logging.info(f"📋 Total active reminders in database: {len(all_reminders)}")
@@ -66,35 +56,31 @@ def send_due_reminders():
             for reminder in reminders:
                 reminder_id, user_id, reminder_type, custom_message, remind_at_str, interval_days = reminder
                 
-                # تجاهل التذكير إذا تم معالجته في هذه الجلسة
                 if reminder_id in processed_reminders:
                     logging.info(f"⚠️ Skipping already processed reminder {reminder_id} for {user_id}")
                     continue
                 
                 logging.info(f"📌 Processing reminder {reminder_id} for {user_id} at {remind_at_str} (Type: {reminder_type}, Interval: {interval_days} days)")
                 
-                # تحقق من تنسيق الوقت
                 try:
                     remind_at = datetime.strptime(remind_at_str, "%Y-%m-%d %H:%M:%S")
                     logging.info(f"🕒 Reminder time {remind_at_str} is valid")
                 except ValueError:
                     logging.error(f"❌ Invalid time format for reminder {reminder_id}: {remind_at_str}")
                     errors.append(f"Invalid time format for reminder {reminder_id}")
-                    continue  # تجاهل التذكير إذا كان تنسيق الوقت غير صحيح
+                    continue
                 
                 message = custom_message if custom_message else f"⏰ تذكير: {reminder_type} الآن."
                 if reminder_type == "موعد" and not custom_message:
                     message = "🩺 تذكير: غدًا موعد زيارتك للمستشفى أو مناسبتك. نتمنى لك التوفيق! 🌿"
 
-                # التحقق من تنسيق user_id (يمكن تعديله حسب الحاجة)
                 if not user_id.startswith('+') and '@' not in user_id:
                     logging.error(f"❌ Invalid user_id format for reminder {reminder_id}: {user_id}")
                     errors.append(f"Invalid user_id format for reminder {reminder_id}")
-                    continue  # تجاهل التذكير إذا كان تنسيق user_id غير صحيح
+                    continue
 
-                # إرسال الرسالة عبر UltraMsg مع إعادة المحاولة
                 try:
-                    for attempt in range(3):  # محاولة 3 مرات
+                    for attempt in range(3):
                         logging.info(f"📤 Trying to send message to {user_id}: {message[:50]}... (Attempt {attempt + 1})")
                         response = requests.post(API_URL, data={
                             "token": TOKEN,
@@ -104,13 +90,12 @@ def send_due_reminders():
                         if response.status_code == 200:
                             sent_count += 1
                             logging.info(f"✅ تم إرسال تذكير لـ {user_id}: {reminder_type}")
-                            # إضافة التذكير إلى مجموعة المعالجة لتجنب التكرار في نفس الجلسة
                             processed_reminders.add(reminder_id)
-                            break  # الخروج من الحلقة إذا نجح الإرسال
+                            break
                         else:
                             logging.error(f"❌ فشل إرسال تذكير لـ {user_id} في المحاولة {attempt + 1}: {response.text}")
-                            if attempt < 2:  # الانتظار فقط في المحاولات غير الأخيرة
-                                time.sleep(5)  # انتظار 5 ثواني قبل المحاولة التالية
+                            if attempt < 2:
+                                time.sleep(5)
                     else:
                         errors.append(f"Failed to send to {user_id} after 3 attempts")
                         logging.error(f"❌ فشل إرسال تذكير لـ {user_id} بعد 3 محاولات")
@@ -118,7 +103,6 @@ def send_due_reminders():
                     errors.append(f"Error sending to {user_id}: {str(e)}")
                     logging.error(f"❌ خطأ أثناء إرسال تذكير لـ {user_id}: {e}")
 
-                # تحديث إحصائيات التذكيرات المرسلة (باستخدام INSERT ... ON CONFLICT)
                 if response.status_code == 200:
                     try:
                         c.execute('''
@@ -131,23 +115,20 @@ def send_due_reminders():
                         logging.error(f"❌ Error updating stats for {user_id}: {str(e)}")
                         errors.append(f"Error updating stats for {user_id}: {str(e)}")
                     
-                    # إعادة الجدولة أو تعطيل التذكير بناءً على interval_days
                     if interval_days > 0:
-                        # إعادة جدولة التذكير التالي للتذكيرات المتكررة
                         try:
                             next_time = remind_at + timedelta(days=interval_days)
                             c.execute("UPDATE reminders SET remind_at = %s WHERE id = %s", 
                                       (next_time.strftime("%Y-%m-%d %H:%M:%S"), reminder_id))
-                            conn.commit()  # التأكد من Commit بعد كل عملية UPDATE
+                            conn.commit()
                             logging.info(f"🔁 إعادة جدولة {reminder_type} لـ {user_id} بعد {interval_days} يوم/أيام إلى {next_time.strftime('%Y-%m-%d %H:%M:%S')}")
                         except Exception as e:
                             logging.error(f"❌ Error rescheduling reminder {reminder_id}: {str(e)}")
                             errors.append(f"Error rescheduling reminder {reminder_id}: {str(e)}")
                     else:
-                        # إيقاف التذكير فقط إذا كان لمرة واحدة (غير متكرر)
                         try:
                             c.execute("UPDATE reminders SET active = FALSE WHERE id = %s", (reminder_id,))
-                            conn.commit()  # التأكد من Commit بعد كل عملية UPDATE
+                            conn.commit()
                             logging.info(f"❌ تم تعطيل التذكير {reminder_id} لـ {user_id} (غير متكرر)")
                         except Exception as e:
                             logging.error(f"❌ Error disabling reminder {reminder_id}: {str(e)}")
