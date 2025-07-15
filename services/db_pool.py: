@@ -1,0 +1,7 @@
+from psycopg2.pool import SimpleConnectionPool
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+DB_URL = os.getenv("DATABASE_URL")
+pool = SimpleConnectionPool(1, 20, DB_URL) if DB_URL else None
