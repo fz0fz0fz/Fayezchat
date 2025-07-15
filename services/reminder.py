@@ -280,6 +280,11 @@ def handle(chat_id: str, message_text: str) -> Dict[str, str]:
             session_data["state"] = "awaiting_reminder_message"
             set_session(user_id, session_data)
             response = {"text": "هل تريد إضافة رسالة مخصصة للتذكير؟ إذا لا، اكتب 'لا' أو 'تخطي'.", "keyboard": ""}
+        elif current_state.startswith("sub_service_"):
+            # العودة من قائمة فرعية ثانية إلى القائمة الفرعية الأولى (سنحدد هذا لاحقًا عند تطوير قوائم فرعية ثانية)
+            session_data["state"] = "main_menu"  # مؤقتًا، العودة إلى القائمة الرئيسية حتى نطور القوائم الفرعية
+            set_session(user_id, session_data)
+            return get_main_menu_response()
         elif current_state.startswith("service_"):
             session_data["state"] = "main_menu"
             set_session(user_id, session_data)
@@ -319,8 +324,8 @@ def handle(chat_id: str, message_text: str) -> Dict[str, str]:
                 session_data["state"] = f"service_{selected_service}"
                 set_session(user_id, session_data)
                 response_text = f"📋 قائمة {selected_service}:\n\nهذه الخدمة قيد التطوير حاليًا. سنقوم بإضافة التفاصيل قريبًا.\n\n"
-                response_text += "للرجوع إلى القائمة الرئيسية اضغط 0\nللرجوع إلى الخطوة السابقة اضغط 00"
-                response = {"text": response_text, "keyboard": "0||00"}
+                response_text += "للرجوع إلى القائمة الرئيسية اضغط 0"
+                response = {"text": response_text, "keyboard": "0"}
             return response
 
     # التعامل مع خطوات التذكير (منبه)
