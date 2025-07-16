@@ -3,7 +3,7 @@ import requests
 import logging
 import os
 from dotenv import load_dotenv
-from reminder import handle_reminder, init_reminder_db, init_session_db
+from .reminder import handle_reminder, init_session_db
 from db_pool import get_db_connection, close_db_connection
 
 load_dotenv()
@@ -16,7 +16,6 @@ INSTANCE_ID = os.getenv("ULTRAMSG_INSTANCE_ID")
 API_URL = f"https://api.ultramsg.com/{INSTANCE_ID}/messages/chat"
 
 init_session_db()
-init_reminder_db()
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
