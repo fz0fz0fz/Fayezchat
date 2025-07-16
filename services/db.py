@@ -39,9 +39,6 @@ def init_db_and_insert_data():
                 "📞 0500000000\n📍 الموقع: https://maps.app.goo.gl/test",
                 "08:30", "12:30", "16:30", "23:30", "💊"
             ),
-            ("موعد", "موعد مستشفى أو مناسبة", "تذكير بموعد مستشفى أو مناسبة", None, None, None, None, "🩺"),
-            ("دواء", "تذكير بأكل الدواء", "تذكير بتناول الدواء", None, None, None, None, "💊"),
-            ("أذكار", "منبه أذكار الصباح والمساء", "تذكير بأذكار الصباح والمساء", None, None, None, None, "📿")
         ]
         c.executemany('''
             INSERT INTO categories (code, name, description, morning_start_time, morning_end_time, evening_start_time, evening_end_time, emoji)
