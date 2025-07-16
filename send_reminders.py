@@ -5,17 +5,24 @@ import logging
 from datetime import datetime, timedelta
 import pytz
 from dotenv import load_dotenv
+from services.db_pool import get_db_connection, close_db_connection  # استيراد الدوال
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-DB_URL = os.getenv("DATABASE_URL")
 API_URL = f"https://api.ultramsg.com/{os.getenv('ULTRAMSG_INSTANCE_ID')}/messages/chat"
 TOKEN = os.getenv("ULTRAMSG_TOKEN")
 
-def send_due_reminders():
-    if not DB_URL or not TOKEN:
+def send_due_reminders(conn=None):
+    if not conn and (not os.getenv("DATABASE_URL") or not TOKEN):
         logging.error("❌ DATABASE_URL or ULTRAMSG_TOKEN not set.")
         return {"sent_count": 0, "errors": ["Missing environment variables"]}
+    
+    # استخدام الاتصال الممرر أو فتح جديد
+    if not conn:
+        conn = get_db_connection()
+        if not conn:
+            logging.error("❌ Failed to get database connection for reminders")
+            return {"sent_count": 0, "errors": ["Database connection failed"]}
     
     now_utc = datetime.now(pytz.UTC)
     now_dt = now_utc.astimezone(pytz.timezone("Asia/Riyadh"))
@@ -25,7 +32,6 @@ def send_due_reminders():
     processed_reminders = set()
     
     try:
-        conn = psycopg2.connect(DB_URL)
         c = conn.cursor()
         c.execute('''
             SELECT id, user_id, reminder_type, message, remind_at, interval_days
@@ -80,6 +86,8 @@ def send_due_reminders():
         logging.error(f"❌ Database error: {e}")
         return {"sent_count": 0, "errors": [f"Database error: {str(e)}"]}
     finally:
-        if conn is not None:
-            conn.close()
+        if not conn and conn is not None:
+            close_db_connection(conn)
             logging.info("🔒 Database connection closed")
+
+import time  # إضافة استيراد time
