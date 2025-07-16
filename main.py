@@ -3,8 +3,10 @@ import requests
 import logging
 import os
 from dotenv import load_dotenv
-from services.reminder import handle_reminder, init_session_db
-from services.db_pool import get_db_connection, close_db_connection
+from services.reminder import handle_reminder
+from services.session import init_session_db
+from services.db import init_db_and_insert_data  # إضافة لتهيئة البيانات
+from services.db_pool import get_db_connection
 
 load_dotenv()
 
@@ -15,7 +17,9 @@ TOKEN = os.getenv("ULTRAMSG_TOKEN")
 INSTANCE_ID = os.getenv("ULTRAMSG_INSTANCE_ID")
 API_URL = f"https://api.ultramsg.com/{INSTANCE_ID}/messages/chat"
 
+# تهيئة قاعدة البيانات والجلسات
 init_session_db()
+init_db_and_insert_data()  # تهيئة جدول الفئات وبيانات افتراضية
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -25,7 +29,7 @@ def webhook():
             logging.error("❌ Invalid payload received")
             return jsonify({"status": "error", "message": "Invalid payload"}), 400
 
-        message = data.get("data", {}).get("body", "").strip()
+        message = data.get("data", {}).get("body", "").strip().lower()  # تحويل إلى lowercase للبحث
         user_id = data.get("data", {}).get("from", "")
 
         if not message or not user_id:
@@ -45,26 +49,17 @@ def webhook():
         if keyboard:
             payload["keyboard"] = keyboard
 
-        with requests.Session() as session:
-            resp = session.post(API_URL, data=payload, timeout=10)
-            if resp.status_code == 200:
-                logging.info(f"✅ Sent response to {user_id}: {text}")
-                return jsonify({"status": "success"}), 200
-            else:
-                logging.error(f"❌ Failed to send response to {user_id}: {resp.text}")
-                return jsonify({"status": "error", "message": resp.text}), 500
+        resp = requests.post(API_URL, data=payload, timeout=10)
+        if resp.status_code == 200:
+            logging.info(f"✅ Sent response to {user_id}: {text}")
+            return jsonify({"status":        success"}), 200
+        else:
+            logging.error(f"❌ Failed to send response to {user_id}: {resp.text}")
+            return jsonify({"status": "error", "message": resp.text}), 500
     except Exception as e:
         logging.error(f"❌ Error in webhook: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route("/send_reminders", methods=["GET"])
-def send_reminders():
-    # المنبهات تم إزالتها، لذا نرجع استجابة فارغة
-    return jsonify({
-        "status": "success",
-        "sent_count": 0,
-        "errors": []
-    }), 200
-
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    port = int(os.getenv("PORT", 5000))  # توافق مع Render
+    app.run(host="0.0.0.0", port=port)
