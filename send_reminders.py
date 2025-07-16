@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, timedelta
 import pytz
 from dotenv import load_dotenv
+import time  # إضافة استيراد time في البداية
 from services.db_pool import get_db_connection, close_db_connection  # استيراد الدوال
 
 load_dotenv()
@@ -13,6 +14,16 @@ API_URL = f"https://api.ultramsg.com/{os.getenv('ULTRAMSG_INSTANCE_ID')}/message
 TOKEN = os.getenv("ULTRAMSG_TOKEN")
 
 def send_due_reminders(conn=None):
+    """
+    إرسال التذكيرات المتأخرة للمستخدمين بناءً على وقتها في قاعدة البيانات.
+    يدعم التكرار وتحديث الإحصائيات.
+    
+    Args:
+        conn: الاتصال بقاعدة البيانات (اختياري)، إذا لم يُمرر سيتم إنشاء واحد جديد.
+    
+    Returns:
+        dict: يحتوي على عدد التذكيرات المرسلة (`sent_count`) وأي أخطاء (`errors`).
+    """
     if not conn and (not os.getenv("DATABASE_URL") or not TOKEN):
         logging.error("❌ DATABASE_URL or ULTRAMSG_TOKEN not set.")
         return {"sent_count": 0, "errors": ["Missing environment variables"]}
@@ -90,4 +101,5 @@ def send_due_reminders(conn=None):
             close_db_connection(conn)
             logging.info("🔒 Database connection closed")
 
-import time  # إضافة استيراد time
+if __name__ == "__main__":
+    send_due_reminders()
