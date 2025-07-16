@@ -3,8 +3,8 @@ import requests
 import logging
 import os
 from dotenv import load_dotenv
-from .reminder import handle_reminder, init_session_db
-from db_pool import get_db_connection, close_db_connection
+from services.reminder import handle_reminder, init_session_db
+from services.db_pool import get_db_connection, close_db_connection
 
 load_dotenv()
 
