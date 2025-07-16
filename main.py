@@ -4,7 +4,7 @@ import requests
 import logging
 from services import handle_reminder, init_reminder_db, init_session_db
 from send_reminders import send_due_reminders
-from services.db_pool import get_db_connection, close_db_connection  # استيراد الدوال الجديدة
+from services.db_pool import get_db_connection, close_db_connection
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -28,22 +28,17 @@ def webhook():
             logging.error("❌ Missing message or user_id in payload")
             return jsonify({"status": "error", "message": "Missing message or user_id"}), 400
         
-        # استخدام الاتصال الجديد
         conn = get_db_connection()
         if not conn:
             return jsonify({"status": "error", "message": "Failed to connect to database"}), 500
         
-        response = handle_reminder(user_id, message, conn)  # تمرير الاتصال إذا كان مطلوبًا
+        response = handle_reminder(user_id, message, conn)
         close_db_connection(conn)
         
         text = response.get("text", "حدث خطأ، حاول مرة أخرى.")
         keyboard = response.get("keyboard", "")
         
-        payload = {
-            "token": TOKEN,
-            "to": user_id,
-            "body": text
-        }
+        payload = {"token": TOKEN, "to": user_id, "body": text}
         if keyboard:
             payload["keyboard"] = keyboard
         
@@ -66,7 +61,7 @@ def send_reminders_endpoint():
         if not conn:
             return jsonify({"status": "error", "message": "Failed to connect to database"}), 500
         
-        result = send_due_reminders(conn)  # تمرير الاتصال
+        result = send_due_reminders(conn)
         close_db_connection(conn)
         logging.info(f"📤 تم فحص التذكيرات وإرسالها: {result}")
         return jsonify({"status": "success", "details": result}), 200
@@ -79,6 +74,9 @@ if __name__ == "__main__":
     if conn:
         init_reminder_db(conn)
         init_session_db(conn)
+        # إضافة تهيئة categories
+        from services.db import init_db_and_insert_data
+        init_db_and_insert_data()
         close_db_connection(conn)
     else:
         logging.error("❌ Failed to initialize databases due to connection issue")
