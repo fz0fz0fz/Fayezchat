@@ -49,6 +49,15 @@ def init_reminder_db(conn=None):
 
 init_reminder_db()
 
+def convert_datetime(obj):
+    if isinstance(obj, datetime):
+        return obj.astimezone(pytz.timezone("Asia/Riyadh")).strftime("%Y-%m-%d %H:%M")
+    elif isinstance(obj, dict):
+        return {k: convert_datetime(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_datetime(item) for item in obj]
+    return obj
+
 def display_category_list(user_id: str, service: str, categories: List[Dict], session_data: Dict) -> Dict[str, str]:
     session_data["state"] = f"service_{service}"
     session_data["history"] = session_data.get("history", []) + [session_data.get("state", "main_menu")]
@@ -67,7 +76,6 @@ def display_category_list(user_id: str, service: str, categories: List[Dict], se
 
 def parse_date(date_str: str) -> datetime | None:
     date_str = date_str.strip()
-    # تنسيقات جديدة مع حذف الصفر من الشهر/اليوم
     formats = [
         "%Y-%m-%d",    # 2025-07-16
         "%d-%m-%Y",    # 16-07-2025
@@ -255,7 +263,7 @@ def handle_reminder(user_id: str, message: str, conn=None) -> Dict[str, str]:
                 response_text = "📜 *تنبيهاتي الحالية*:\n\n"
                 for i, reminder in enumerate(reminders, 1):
                     reminder_id, reminder_type, msg, remind_at, interval_days = reminder
-                    remind_at_str = remind_at.astimezone(pytz.timezone("Asia/Riyadh")).strftime("%Y-%m-%d %H:%M")
+                    remind_at_str = convert_datetime(remind_at)  # تحويل datetime
                     response_text += f"{i}. {reminder_type}: {msg} (🕒 {remind_at_str}) {'🔄 كل ' + str(interval_days) + ' أيام' if interval_days > 0 else ''}\n"
                 response_text += "\n↩️ للرجوع للقائمة 🏠 الرئيسية (0)\n🔙 للرجوع إلى القائمة السابقة اضغط 00"
                 return {"text": response_text, "keyboard": "0||00"}
@@ -355,16 +363,23 @@ def handle_reminder(user_id: str, message: str, conn=None) -> Dict[str, str]:
                 ''', (user_id, session_data["reminder_type"], session_data["message"], 
                       session_data["remind_at"], interval_days))
                 conn.commit()
+                # تحويل remind_at قبل الإرجاع
+                remind_at_str = convert_datetime(session_data["remind_at"])
                 response_text = (
-                    "✅ *تم إنشاء التذكير بنجاح!* 🎉\n\n📌 نوع التذكير: {session_data['reminder_type']}\n"
-                    f"💬 الرسالة: {session_data['message']}\n"
-                    f"🕒 الوقت: {session_data['remind_at'].astimezone(pytz.timezone('Asia/Riyadh')).strftime('%Y-%m-%d %H:%M')}\n"
-                    f"🔄 التكرار: {'بدون تكرار' if interval_days == 0 else 'كل ' + str(interval_days) + ' أيام'}\n\n"
+                    "✅ *تم إنشاء التذكير بنجاح!* 🎉\n\n📌 نوع التذكير: {}\n"
+                    "💬 الرسالة: {}\n"
+                    "🕒 الوقت: {}\n"
+                    "🔄 التكرار: {}\n\n"
                     "↩️ للرجوع للقائمة 🏠 الرئيسية (0)\n🔙 للرجوع إلى القائمة السابقة اضغط 00"
+                ).format(
+                    session_data["reminder_type"],
+                    session_data["message"],
+                    remind_at_str,
+                    'بدون تكرار' if interval_days == 0 else 'كل ' + str(interval_days) + ' أيام'
                 )
                 session_data = {"state": "reminder_menu", "history": history}
                 set_session(user_id, session_data)
-                return {"text": response_text, "keyboard": "0||00"}
+                return convert_datetime({"text": response_text, "keyboard": "0||00"})  # تحويل كامل للـ response
             except psycopg2.DatabaseError as e:
                 logging.error(f"❌ خطأ أثناء إنشاء تذكير لـ {user_id}: {e}")
                 response_text = "❌ حدث خطأ أثناء إنشاء التذكير.\n\n↩️ للرجوع للقائمة 🏠 الرئيسية (0)\n🔙 للرجوع إلى القائمة السابقة اضغط 00"
