@@ -12,22 +12,4 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
-      - key: PORT
-        value: 5000
-    autoDeploy: true
-
-  - type: cron
-    name: reminders-cron
-    env: python
-    plan: free
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "python -c 'import requests; requests.get(\"https://fayezchat.onrender.com/send_reminders\")'"
-    schedule: "*/5 * * * *"
-    envVars:
-      - key: ULTRAMSG_INSTANCE_ID
-        sync: false
-      - key: ULTRAMSG_TOKEN
-        sync: false
-      - key: DATABASE_URL
-        sync: false
-    autoDeploy: true
+    autoDeploy: false  # اقتراح: لتجنب الانتشار التلقائي غير المدروس
