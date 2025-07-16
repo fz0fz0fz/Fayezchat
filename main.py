@@ -4,7 +4,7 @@ import logging
 import os
 from dotenv import load_dotenv
 from services import handle_reminder, init_reminder_db, init_session_db
-from services.send_reminders import send_due_reminders
+from services.send_reminders import send_due_reminders  # تأكد من الاستيراد
 
 load_dotenv()
 
@@ -65,8 +65,12 @@ def webhook():
 
 @app.route("/send_reminders", methods=["GET"])
 def send_reminders():
-    send_due_reminders()
-    return jsonify({"status": "success"}), 200
+    result = send_due_reminders()
+    return jsonify({
+        "status": "success" if result["sent_count"] > 0 else "partial_success" if not result["errors"] else "error",
+        "sent_count": result["sent_count"],
+        "errors": result["errors"]
+    }), 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
