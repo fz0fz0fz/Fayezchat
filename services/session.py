@@ -4,18 +4,13 @@ import json
 import logging
 from dotenv import load_dotenv
 
-# تحميل متغيرات البيئة
 load_dotenv()
-
-# تهيئة السجل
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-
-# الحصول على DATABASE_URL
 DB_URL = os.getenv("DATABASE_URL")
 
 def init_session_db():
     if not DB_URL:
-        logging.error("❌ DATABASE_URL not set in environment variables.")
+        logging.error("❌ DATABASE_URL not set.")
         return
     try:
         conn = psycopg2.connect(DB_URL)
@@ -27,20 +22,18 @@ def init_session_db():
             )
         ''')
         conn.commit()
-        logging.info("✅ تم إنشاء جدول sessions في قاعدة البيانات PostgreSQL إن لم يكن موجودًا.")
+        logging.info("✅ Sessions table initialized.")
     except Exception as e:
-        logging.error(f"❌ خطأ أثناء تهيئة جدول sessions: {e}")
+        logging.error(f"❌ Error initializing sessions: {e}")
     finally:
-        if conn is not None:
+        if conn:
             conn.close()
-            logging.info("🔒 Database connection closed during session table initialization")
-
-init_session_db()
 
 def get_session(user_id: str) -> dict:
     if not DB_URL:
-        logging.error("❌ DATABASE_URL not set in environment variables.")
+        logging.error("❌ DATABASE_URL not set.")
         return {"state": "main_menu", "history": []}
+    conn = None
     try:
         conn = psycopg2.connect(DB_URL)
         cursor = conn.cursor()
@@ -48,21 +41,21 @@ def get_session(user_id: str) -> dict:
         row = cursor.fetchone()
         if row and row[0]:
             state = json.loads(row[0])
-            if "history" not in state:
-                state["history"] = []
+            state.setdefault("history", [])
             return state
         return {"state": "main_menu", "history": []}
-    except (psycopg2.DatabaseError, json.JSONDecodeError) as e:
-        logging.error(f"❌ خطأ أثناء جلب الجلسة لـ {user_id}: {e}")
+    except Exception as e:
+        logging.error(f"❌ Error getting session for {user_id}: {e}")
         return {"state": "main_menu", "history": []}
     finally:
-        if conn is not None:
+        if conn:
             conn.close()
 
 def set_session(user_id: str, state: dict):
     if not DB_URL:
-        logging.error("❌ DATABASE_URL not set in environment variables.")
+        logging.error("❌ DATABASE_URL not set.")
         return
+    conn = None
     try:
         conn = psycopg2.connect(DB_URL)
         cursor = conn.cursor()
@@ -73,8 +66,8 @@ def set_session(user_id: str, state: dict):
             cursor.execute('INSERT INTO sessions (user_id, state) VALUES (%s, %s) ON CONFLICT (user_id) DO UPDATE SET state = %s', 
                            (user_id, state_json, state_json))
         conn.commit()
-    except psycopg2.DatabaseError as e:
-        logging.error(f"❌ خطأ أثناء حفظ الجلسة لـ {user_id}: {e}")
+    except Exception as e:
+        logging.error(f"❌ Error setting session for {user_id}: {e}")
     finally:
-        if conn is not None:
+        if conn:
             conn.close()
