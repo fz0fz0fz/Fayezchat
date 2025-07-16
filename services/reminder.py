@@ -112,11 +112,11 @@ def handle_reminder(user_id: str, message: str, conn=None) -> Dict[str, str]:
         conn = get_db_connection()
         if not conn:
             return {"text": "❌ فشل الاتصال بقاعدة البيانات.\n\n↩️ للرجوع للقائمة 🏠 الرئيسية (0)", "keyboard": "0"}
-    
+
     session_data = get_session(user_id)
     current_state = session_data.get("state", "main_menu")
     history = session_data.get("history", [])
-    
+
     if message == "0":
         session_data = {"state": "main_menu", "history": []}
         set_session(user_id, session_data)
@@ -130,7 +130,7 @@ def handle_reminder(user_id: str, message: str, conn=None) -> Dict[str, str]:
         )
         keyboard = "1||2||3||4||5||6||7||8||9||10||11||12||13||14||15||16||17||18||19||20"
         return {"text": response_text, "keyboard": keyboard}
-    
+
     if message == "00" and history:
         previous_state = history.pop() if history else "main_menu"
         session_data = {"state": previous_state, "history": history}
@@ -159,7 +159,7 @@ def handle_reminder(user_id: str, message: str, conn=None) -> Dict[str, str]:
             if service == "صيدلية":
                 categories = [cat for cat in categories if "pharmacy" in cat.get("code", "").lower()]
             return display_category_list(user_id, service, categories, session_data)
-    
+
     if current_state == "main_menu":
         services = {
             "1": "حكومي", "2": "صيدلية", "3": "بقالة", "4": "خضار", "5": "رحلات",
@@ -169,7 +169,7 @@ def handle_reminder(user_id: str, message: str, conn=None) -> Dict[str, str]:
         }
         service_names = {v: k for k, v in services.items()}
         selected_service = services.get(message) or service_names.get(message.lower())
-        
+
         if selected_service:
             if selected_service == "منبه":
                 session_data["state"] = "reminder_menu"
@@ -201,7 +201,7 @@ def handle_reminder(user_id: str, message: str, conn=None) -> Dict[str, str]:
         )
         keyboard = "1||2||3||4||5||6||7||8||9||10||11||12||13||14||15||16||17||18||19||20"
         return {"text": response_text, "keyboard": keyboard}
-    
+
     elif current_state == "reminder_menu":
         if message == "حذف":
             try:
@@ -298,13 +298,13 @@ def handle_reminder(user_id: str, message: str, conn=None) -> Dict[str, str]:
             "5️⃣ إحصائياتي 📊\n\n❌ لحذف جميع التنبيهات أرسل: حذف\n↩️ للرجوع للقائمة 🏠 الرئيسية (0)"
         )
         return {"text": response_text, "keyboard": "1||2||3||4||5||حذف||0"}
-    
+
     elif current_state == "set_reminder_type":
         date_time_match = re.match(r"(\d{1,4}[-/]\d{1,2}[-/]\d{1,4})\s*(\d{1,2}:[\d:]{2}\s*(AM|PM)?)?", message)
         if date_time_match:
             date_str = date_time_match.group(1)
             time_str = date_time_match.group(2) or "00:00"
-            
+
             parsed_date = parse_date(date_str)
             if not parsed_date:
                 response_text = (
@@ -314,7 +314,7 @@ def handle_reminder(user_id: str, message: str, conn=None) -> Dict[str, str]:
                     "↩️ للرجوع للقائمة 🏠 الرئيسية (0)\n🔙 للرجوع إلى القائمة السابقة اضغط 00"
                 )
                 return {"text": response_text, "keyboard": "0||00"}
-            
+
             parsed_time = parse_time(time_str)
             if not parsed_time:
                 response_text = (
@@ -324,22 +324,22 @@ def handle_reminder(user_id: str, message: str, conn=None) -> Dict[str, str]:
                     "↩️ للرجوع للقائمة 🏠 الرئيسية (0)\n🔙 للرجوع إلى القائمة السابقة اضغط 00"
                 )
                 return {"text": response_text, "keyboard": "0||00"}
-            
+
             remind_at = parsed_date.replace(hour=parsed_time.hour, minute=parsed_time.minute, second=0, microsecond=0)
             session_data["remind_at"] = remind_at
             session_data["state"] = "set_reminder_message"
             session_data["history"] = history + [current_state]
             set_session(user_id, session_data)
-            response_text = "📝 الرجاء إدخال رسالة التذكير:\n\n↩️ للرجوع للقائمة 🏠 الرئيسية (0)\n🔙 للرجوع إلى القائمة السابقة اضغط 00"
-            return {"text": response_text, "keyboard": "0||00"}
-        
+            response = {"text": "📝 الرجاء إدخال رسالة التذكير:\n\n↩️ للرجوع للقائمة 🏠 الرئيسية (0)\n🔙 للرجوع إلى القائمة السابقة اضغط 00", "keyboard": "0||00"}
+            return convert_datetime(response)
+
         response_text = (
             "📅 الرجاء إدخال تاريخ التذكير (أمثلة: 2025-07-16، 16-07-2025، 07/16/2025، 2025-7-16، 16-7-2025، 7/16/2025):\n\n"
             "⏰ الوقت (أمثلة: 14:30، 02:30 PM، 2:30) - يمكن إدخاله مع التاريخ (مثل 2025-07-16 14:30):\n\n"
             "↩️ للرجوع للقائمة 🏠 الرئيسية (0)\n🔙 للرجوع إلى القائمة السابقة اضغط 00"
         )
         return {"text": response_text, "keyboard": "0||00"}
-    
+
     elif current_state == "set_reminder_message":
         session_data["message"] = message
         session_data["state"] = "set_reminder_interval"
@@ -350,7 +350,7 @@ def handle_reminder(user_id: str, message: str, conn=None) -> Dict[str, str]:
             "↩️ للرجوع للقائمة 🏠 الرئيسية (0)\n🔙 للرجوع إلى القائمة السابقة اضغط 00"
         )
         return {"text": response_text, "keyboard": "1||2||3||4||0||00"}
-    
+
     elif current_state == "set_reminder_interval":
         interval_map = {"1": 0, "2": 1, "3": 7, "4": 30}
         if message in interval_map:
@@ -360,10 +360,9 @@ def handle_reminder(user_id: str, message: str, conn=None) -> Dict[str, str]:
                 c.execute('''
                     INSERT INTO reminders (user_id, reminder_type, message, remind_at, interval_days)
                     VALUES (%s, %s, %s, %s, %s)
-                ''', (user_id, session_data["reminder_type"], session_data["message"], 
+                ''', (user_id, session_data["reminder_type"], session_data["message"],
                       session_data["remind_at"], interval_days))
                 conn.commit()
-                # تحويل remind_at قبل الإرجاع
                 remind_at_str = convert_datetime(session_data["remind_at"])
                 response_text = (
                     "✅ *تم إنشاء التذكير بنجاح!* 🎉\n\n📌 نوع التذكير: {}\n"
@@ -379,7 +378,7 @@ def handle_reminder(user_id: str, message: str, conn=None) -> Dict[str, str]:
                 )
                 session_data = {"state": "reminder_menu", "history": history}
                 set_session(user_id, session_data)
-                return convert_datetime({"text": response_text, "keyboard": "0||00"})  # تحويل كامل للـ response
+                return convert_datetime({"text": response_text, "keyboard": "0||00"})
             except psycopg2.DatabaseError as e:
                 logging.error(f"❌ خطأ أثناء إنشاء تذكير لـ {user_id}: {e}")
                 response_text = "❌ حدث خطأ أثناء إنشاء التذكير.\n\n↩️ للرجوع للقائمة 🏠 الرئيسية (0)\n🔙 للرجوع إلى القائمة السابقة اضغط 00"
@@ -392,7 +391,7 @@ def handle_reminder(user_id: str, message: str, conn=None) -> Dict[str, str]:
             "↩️ للرجوع للقائمة 🏠 الرئيسية (0)\n🔙 للرجوع إلى القائمة السابقة اضغط 00"
         )
         return {"text": response_text, "keyboard": "1||2||3||4||0||00"}
-    
+
     elif current_state.startswith("service_"):
         service = current_state.replace("service_", "")
         categories = get_categories()
@@ -414,7 +413,7 @@ def handle_reminder(user_id: str, message: str, conn=None) -> Dict[str, str]:
             return display_category_list(user_id, service, pharmacies, session_data)
         response_text = f"⚙️ الخدمة '{service}' قيد التطوير.\n\n↩️ للرجوع للقائمة 🏠 الرئيسية (0)\n🔙 للرجوع إلى القائمة السابقة اضغط 00"
         return {"text": response_text, "keyboard": "0||00"}
-    
+
     if not conn and conn is not None:
         close_db_connection(conn)
     return {"text": "❌ حالة غير معروفة. يرجى المحاولة مرة أخرى.\n\n↩️ للرجوع للقائمة 🏠 الرئيسية (0)", "keyboard": "0"}
