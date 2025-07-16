@@ -4,7 +4,8 @@ import logging
 import os
 from dotenv import load_dotenv
 from services import handle_reminder, init_reminder_db, init_session_db
-from services.send_reminders import send_due_reminders  # تأكد من الاستيراد
+from services.send_reminders import send_due_reminders
+from services.db_pool import get_db_connection, close_db_connection  # أضف هذا السطر
 
 load_dotenv()
 
@@ -33,14 +34,13 @@ def webhook():
             logging.error("❌ Missing message or user_id in payload")
             return jsonify({"status": "error", "message": "Missing message or user_id"}), 400
         
-        conn = get_db_connection()
+        conn = get_db_connection()  # الآن يعمل بفضل الاستيراد
         if not conn:
             return jsonify({"status": "error", "message": "Failed to connect to database"}), 500
         
         response = handle_reminder(user_id, message, conn)
-        close_db_connection(conn)
+        close_db_connection(conn)  # الآن يعمل بفضل الاستيراد
         
-        # تحويل datetime إلى سلسلة نصية إذا كان موجودًا
         if "remind_at" in response and isinstance(response["remind_at"], datetime):
             response["remind_at"] = response["remind_at"].astimezone(pytz.timezone("Asia/Riyadh")).strftime("%Y-%m-%d %H:%M")
         
