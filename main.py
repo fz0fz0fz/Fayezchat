@@ -1,17 +1,22 @@
 from flask import Flask, request, jsonify
-import os
 import requests
 import logging
-from services import handle_reminder, init_reminder_db, init_session_db
-from send_reminders import send_due_reminders
-from services.db_pool import get_db_connection, close_db_connection
+import os
 from dotenv import load_dotenv
+from services import handle_reminder, init_reminder_db, init_session_db
+from services.send_reminders import send_due_reminders
 
 load_dotenv()
+
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-API_URL = f"https://api.ultramsg.com/{os.getenv('ULTRAMSG_INSTANCE_ID')}/messages/chat"
+
 TOKEN = os.getenv("ULTRAMSG_TOKEN")
+INSTANCE_ID = os.getenv("ULTRAMSG_INSTANCE_ID")
+API_URL = f"https://api.ultramsg.com/{INSTANCE_ID}/messages/chat"
+
+init_session_db()
+init_reminder_db()
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -35,6 +40,10 @@ def webhook():
         response = handle_reminder(user_id, message, conn)
         close_db_connection(conn)
         
+        # تحويل datetime إلى سلسلة نصية إذا كان موجودًا
+        if "remind_at" in response and isinstance(response["remind_at"], datetime):
+            response["remind_at"] = response["remind_at"].astimezone(pytz.timezone("Asia/Riyadh")).strftime("%Y-%m-%d %H:%M")
+        
         text = response.get("text", "حدث خطأ، حاول مرة أخرى.")
         keyboard = response.get("keyboard", "")
         
@@ -54,31 +63,10 @@ def webhook():
         logging.error(f"❌ Error in webhook: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route("/send_reminders", methods=["GET", "POST"])
-def send_reminders_endpoint():
-    try:
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({"status": "error", "message": "Failed to connect to database"}), 500
-        
-        result = send_due_reminders(conn)
-        close_db_connection(conn)
-        logging.info(f"📤 تم فحص التذكيرات وإرسالها: {result}")
-        return jsonify({"status": "success", "details": result}), 200
-    except Exception as e:
-        logging.error(f"❌ خطأ أثناء إرسال التذكيرات: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
+@app.route("/send_reminders", methods=["GET"])
+def send_reminders():
+    send_due_reminders()
+    return jsonify({"status": "success"}), 200
 
 if __name__ == "__main__":
-    conn = get_db_connection()
-    if conn:
-        init_reminder_db(conn)
-        init_session_db(conn)
-        # إضافة تهيئة categories
-        from services.db import init_db_and_insert_data
-        init_db_and_insert_data()
-        close_db_connection(conn)
-    else:
-        logging.error("❌ Failed to initialize databases due to connection issue")
-    port = int(os.getenv("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=10000)
