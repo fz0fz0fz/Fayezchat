@@ -2,11 +2,8 @@ from flask import Flask, request, jsonify
 import requests
 import logging
 import os
-from datetime import datetime
-import pytz
 from dotenv import load_dotenv
 from reminder import handle_reminder, init_reminder_db, init_session_db
-from send_reminders import send_due_reminders
 from db_pool import get_db_connection, close_db_connection
 
 load_dotenv()
@@ -20,15 +17,6 @@ API_URL = f"https://api.ultramsg.com/{INSTANCE_ID}/messages/chat"
 
 init_session_db()
 init_reminder_db()
-
-def convert_datetime(obj):
-    if isinstance(obj, datetime):
-        return obj.astimezone(pytz.timezone("Asia/Riyadh")).strftime("%Y-%m-%d %H:%M")
-    elif isinstance(obj, dict):
-        return {k: convert_datetime(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [convert_datetime(item) for item in obj]
-    return obj
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -50,9 +38,6 @@ def webhook():
             return jsonify({"status": "error", "message": "Failed to connect to database"}), 500
 
         response = handle_reminder(user_id, message, conn)
-        logging.debug(f"Raw response before conversion: {response}")  # تتبع الـ response الخام
-        response = convert_datetime(response)  # تحويل إضافي كدعم
-        logging.debug(f"Converted response: {response}")  # تتبع بعد التحويل
 
         text = response.get("text", "حدث خطأ، حاول مرة أخرى.")
         keyboard = response.get("keyboard", "")
@@ -75,11 +60,11 @@ def webhook():
 
 @app.route("/send_reminders", methods=["GET"])
 def send_reminders():
-    result = send_due_reminders()
+    # المنبهات تم إزالتها، لذا نرجع استجابة فارغة
     return jsonify({
-        "status": "success" if result["sent_count"] > 0 else "partial_success" if not result["errors"] else "error",
-        "sent_count": result["sent_count"],
-        "errors": result["errors"]
+        "status": "success",
+        "sent_count": 0,
+        "errors": []
     }), 200
 
 if __name__ == "__main__":
