@@ -50,10 +50,7 @@ def webhook():
             return jsonify({"status": "error", "message": "Failed to connect to database"}), 500
         
         response = handle_reminder(user_id, message, conn)
-        close_db_connection(conn)
-        
-        # تحويل جميع كائنات datetime في response (بما في ذلك المتداخلة)
-        response = convert_datetime(response)
+        response = convert_datetime(response)  # تحويل إضافي كدعم
         
         text = response.get("text", "حدث خطأ، حاول مرة أخرى.")
         keyboard = response.get("keyboard", "")
