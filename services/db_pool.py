@@ -1,35 +1,25 @@
 import psycopg2
 import os
+import logging
 from dotenv import load_dotenv
 
 load_dotenv()
 DB_URL = os.getenv("DATABASE_URL")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 def get_db_connection():
-    """
-    إنشاء اتصال بقاعدة البيانات باستخدام DATABASE_URL.
-
-    Returns:
-        psycopg2.connection: كائن الاتصال إذا نجح، أو None إذا فشل.
-    """
     try:
         conn = psycopg2.connect(DB_URL)
-        print("✅ Database connection initialized successfully")
+        logging.info("✅ Database connection initialized.")
         return conn
     except psycopg2.Error as e:
-        print(f"❌ Failed to connect to database: {e}")
+        logging.error(f"❌ Failed to connect: {e}")
         return None
 
 def close_db_connection(conn=None):
-    """
-    إغلاق الاتصال بقاعدة البيانات.
-
-    Args:
-        conn (psycopg2.connection, optional): كائن الاتصال المراد إغلاقه. إذا لم يُمرر، لن يحدث شيء.
-    """
-    if conn is not None:
+    if conn:
         try:
             conn.close()
-            print("🔒 Database connection closed")
+            logging.info("🔒 Database connection closed.")
         except psycopg2.Error as e:
-            print(f"❌ Error closing database connection: {e}")
+            logging.error(f"❌ Error closing connection: {e}")
