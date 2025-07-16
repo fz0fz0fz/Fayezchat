@@ -52,7 +52,7 @@ def webhook():
         resp = requests.post(API_URL, data=payload, timeout=10)
         if resp.status_code == 200:
             logging.info(f"✅ Sent response to {user_id}: {text}")
-            return jsonify({"status":        success"}), 200
+            return jsonify({"status": "success"}), 200
         else:
             logging.error(f"❌ Failed to send response to {user_id}: {resp.text}")
             return jsonify({"status": "error", "message": resp.text}), 500
