@@ -21,6 +21,15 @@ API_URL = f"https://api.ultramsg.com/{INSTANCE_ID}/messages/chat"
 init_session_db()
 init_reminder_db()
 
+def convert_datetime(obj):
+    if isinstance(obj, datetime):
+        return obj.astimezone(pytz.timezone("Asia/Riyadh")).strftime("%Y-%m-%d %H:%M")
+    elif isinstance(obj, dict):
+        return {k: convert_datetime(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_datetime(item) for item in obj]
+    return obj
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
     try:
@@ -43,10 +52,8 @@ def webhook():
         response = handle_reminder(user_id, message, conn)
         close_db_connection(conn)
         
-        # تحويل جميع كائنات datetime في response إلى سلاسل نصية
-        for key, value in response.items():
-            if isinstance(value, datetime):
-                response[key] = value.astimezone(pytz.timezone("Asia/Riyadh")).strftime("%Y-%m-%d %H:%M")
+        # تحويل جميع كائنات datetime في response (بما في ذلك المتداخلة)
+        response = convert_datetime(response)
         
         text = response.get("text", "حدث خطأ، حاول مرة أخرى.")
         keyboard = response.get("keyboard", "")
